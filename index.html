@@ -363,8 +363,9 @@
 
   /* ---------------- storage backends ----------------
      Both stores implement the same interface:
-       subscribeMessen(cb), subscribeActiveMesse(cb),
-       createMesse(name), setActiveMesse(id), deleteMesse(id),
+       subscribeMessen(cb), subscribeActiveMessen(cb) — several Messen can
+       be active at once (e.g. parallel surveys at different locations),
+       createMesse(name), setMesseActive(id, active), deleteMesse(id),
        subscribeHallenForMesse(messeId, cb),
        subscribeActiveHallenForMesse(messeId, cb),
        subscribeHalleStats(messeId, hallId, cb),
@@ -398,7 +399,7 @@
       return Object.entries(data.messen).map(([id,m])=>({id, name:m.name, active:!!m.active, createdAt:m.createdAt}))
         .sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||''));
     }
-    function activeMesseSync(){ return listMessenSync().find(m=>m.active) || null; }
+    function activeMessenSync(){ return listMessenSync().filter(m=>m.active).sort(naturalCompareHalls); }
     function listHallenSync(messeId, onlyActive){
       const data = readAll();
       const m = data.messen[messeId];
@@ -415,7 +416,7 @@
     function notifyMessen(){
       const list = listMessenSync();
       messenListeners.forEach(cb=>cb(list));
-      const active = activeMesseSync();
+      const active = activeMessenSync();
       activeMesseListeners.forEach(cb=>cb(active));
     }
     function notifyHallen(messeId){
@@ -436,8 +437,8 @@
         messenListeners.push(cb); cb(listMessenSync());
         return ()=>{ const i=messenListeners.indexOf(cb); if(i>-1) messenListeners.splice(i,1); };
       },
-      subscribeActiveMesse(cb){
-        activeMesseListeners.push(cb); cb(activeMesseSync());
+      subscribeActiveMessen(cb){
+        activeMesseListeners.push(cb); cb(activeMessenSync());
         return ()=>{ const i=activeMesseListeners.indexOf(cb); if(i>-1) activeMesseListeners.splice(i,1); };
       },
       async createMesse(name){
@@ -447,10 +448,9 @@
         writeAll(data); notifyMessen();
         return id;
       },
-      async setActiveMesse(messeId){
+      async setMesseActive(messeId, active){
         const data = readAll();
-        Object.values(data.messen).forEach(m=>{ m.active=false; });
-        if(data.messen[messeId]) data.messen[messeId].active = true;
+        if(data.messen[messeId]) data.messen[messeId].active = active;
         writeAll(data); notifyMessen();
       },
       async deleteMesse(messeId){
@@ -562,22 +562,22 @@
           cb(snap.docs.map(d=>({id:d.id, ...d.data()})));
         }, ()=>cb([]));
       },
-      subscribeActiveMesse(cb){
+      subscribeActiveMessen(cb){
+        // Mehrere Messen können gleichzeitig aktiv sein (z. B. parallele
+        // Befragungen an unterschiedlichen Orten) — daher eine Liste statt
+        // nur der ersten gefundenen.
         return messenCol.where('active','==',true).onSnapshot(snap=>{
-          const docs = snap.docs;
-          cb(docs.length ? {id:docs[0].id, ...docs[0].data()} : null);
-        }, ()=>cb(null));
+          const list = snap.docs.map(d=>({id:d.id, ...d.data()}));
+          list.sort(naturalCompareHalls);
+          cb(list);
+        }, ()=>cb([]));
       },
       async createMesse(name){
         const ref = await messenCol.add({name, active:false, createdAt:new Date().toISOString()});
         return ref.id;
       },
-      async setActiveMesse(messeId){
-        const snap = await messenCol.where('active','==',true).get();
-        const batch = db.batch();
-        snap.docs.forEach(d=>{ if(d.id!==messeId) batch.update(d.ref, {active:false}); });
-        batch.update(messenCol.doc(messeId), {active:true});
-        await batch.commit();
+      async setMesseActive(messeId, active){
+        await messenCol.doc(messeId).update({active});
       },
       async deleteMesse(messeId){
         const hSnap = await hallenCol(messeId).limit(500).get();
@@ -705,6 +705,8 @@
 
   let homeMesseUnsub = null;
   let homeActiveMesse = null;
+  let homeActiveMessen = [];
+  let homeSelectedMesseId = null;
   let homeHallenUnsub = null;
   let homeStatsUnsubs = {};
   let homeHallen = [];
@@ -771,7 +773,7 @@
 
   /* ---------------- HOME (Interviewer:innen) ---------------- */
   function renderHome(){
-    homeHallen=[]; homeStats={}; homeActiveMesse=null;
+    homeHallen=[]; homeStats={}; homeActiveMesse=null; homeActiveMessen=[];
     setTopbar(`
       <div style="flex:1;">
         <p class="kicker">Wissler &amp; Partner</p>
@@ -782,28 +784,49 @@
     document.getElementById('admin-btn').onclick = ()=> isAdmin ? goAdminMessen() : goAdminPin();
     app.innerHTML = `<div id="home-summary"></div><div id="home-list">${loadingRow()}</div>`;
 
-    homeMesseUnsub = store.subscribeActiveMesse(messe=>{
-      homeActiveMesse = messe;
-      stopHomeHallen();
-      if(!messe){
+    // Mehrere Messen können gleichzeitig aktiv sein (z. B. parallele
+    // Befragungen an unterschiedlichen Orten). Ist nur eine aktiv, wird sie
+    // automatisch verwendet; bei mehreren wählt das Gerät eine aus und
+    // merkt sich die Wahl (localStorage), bis die Messe deaktiviert wird.
+    homeMesseUnsub = store.subscribeActiveMessen(list=>{
+      homeActiveMessen = list;
+      if(!list.length){
+        homeActiveMesse = null;
+        stopHomeHallen();
         renderHomeNoMesse();
         return;
       }
-      homeHallenUnsub = store.subscribeActiveHallenForMesse(messe.id, list=>{
-        homeHallen = list;
-        const ids = new Set(list.map(h=>h.id));
-        Object.keys(homeStatsUnsubs).forEach(id=>{
-          if(!ids.has(id)){ homeStatsUnsubs[id](); delete homeStatsUnsubs[id]; delete homeStats[id]; }
-        });
-        list.forEach(h=>{
-          if(!homeStatsUnsubs[h.id]){
-            homeStatsUnsubs[h.id] = store.subscribeHalleStats(messe.id, h.id, stats=>{
-              homeStats[h.id]=stats; renderHomeList();
-            });
-          }
-        });
-        renderHomeList();
+      let chosen = homeSelectedMesseId ? list.find(m=>m.id===homeSelectedMesseId) : null;
+      if(!chosen && list.length===1) chosen = list[0];
+      if(!chosen){
+        homeActiveMesse = null;
+        stopHomeHallen();
+        renderHomeMessePicker();
+        return;
+      }
+      selectHomeMesse(chosen);
+    });
+  }
+
+  function selectHomeMesse(messe){
+    homeActiveMesse = messe;
+    homeSelectedMesseId = messe.id;
+    try{ localStorage.setItem('ausstellerbefragung_home_messe', messe.id); }catch(e){}
+    stopHomeHallen();
+    homeHallenUnsub = store.subscribeActiveHallenForMesse(messe.id, list=>{
+      homeHallen = list;
+      const ids = new Set(list.map(h=>h.id));
+      Object.keys(homeStatsUnsubs).forEach(id=>{
+        if(!ids.has(id)){ homeStatsUnsubs[id](); delete homeStatsUnsubs[id]; delete homeStats[id]; }
       });
+      list.forEach(h=>{
+        if(!homeStatsUnsubs[h.id]){
+          homeStatsUnsubs[h.id] = store.subscribeHalleStats(messe.id, h.id, stats=>{
+            homeStats[h.id]=stats; renderHomeList();
+          });
+        }
+      });
+      renderHomeList();
     });
   }
 
@@ -814,14 +837,48 @@
     if(listEl) listEl.innerHTML = `<div class="empty">${ICON.empty}<div>Aktuell ist keine Messe aktiv.<br>Bitte wenden Sie sich an die Administration.</div></div>`;
   }
 
+  function renderHomeMessePicker(){
+    const summaryEl = document.getElementById('home-summary');
+    const listEl = document.getElementById('home-list');
+    if(summaryEl) summaryEl.innerHTML='';
+    if(!listEl) return;
+    listEl.innerHTML = `<p class="hint" style="margin:4px 2px 10px;">Mehrere Messen sind aktuell aktiv. Bitte auswählen:</p>` +
+      homeActiveMessen.map(m=>`<button class="hall-card" data-id="${esc(m.id)}">
+        <div class="hall-card-top"><span class="hall-name">${esc(m.name)}</span></div>
+      </button>`).join('');
+    listEl.querySelectorAll('.hall-card').forEach(c=>{
+      c.onclick = ()=>{
+        const m = homeActiveMessen.find(x=>x.id===c.dataset.id);
+        if(m) selectHomeMesse(m);
+      };
+    });
+  }
+
+  function bindSwitchMesse(){
+    const btn = document.getElementById('switch-messe');
+    if(btn) btn.onclick = ()=>{
+      homeSelectedMesseId = null;
+      try{ localStorage.removeItem('ausstellerbefragung_home_messe'); }catch(e){}
+      stopHomeHallen();
+      renderHomeMessePicker();
+    };
+  }
+
   function renderHomeList(){
     const summaryEl = document.getElementById('home-summary');
     const listEl = document.getElementById('home-list');
     if(!listEl || !summaryEl || !homeActiveMesse) return;
 
+    const messeSwitchHtml = homeActiveMessen.length>1 ? `
+      <div class="stats-bar" style="margin-top:2px; margin-bottom:10px;">
+        <div class="stats-total">Messe: <b>${esc(homeActiveMesse.name)}</b></div>
+        <button class="btn btn-sm" id="switch-messe" style="margin-top:8px;">Andere Messe wählen</button>
+      </div>` : '';
+
     if(!homeHallen.length){
-      summaryEl.innerHTML='';
+      summaryEl.innerHTML = messeSwitchHtml;
       listEl.innerHTML = `<div class="empty">${ICON.empty}<div>Aktuell sind keine Hallen aktiv.</div></div>`;
+      bindSwitchMesse();
       return;
     }
 
@@ -832,7 +889,7 @@
         return acc;
       }, {total:0,out:0,inn:0});
       const pct = n => totals.total? Math.round(n/totals.total*100) : 0;
-      summaryEl.innerHTML = `<div class="stats-bar" style="margin-top:2px;">
+      summaryEl.innerHTML = messeSwitchHtml + `<div class="stats-bar" style="margin-top:2px;">
         <div class="stats-total">Gesamt über alle aktiven Hallen · <b>${totals.total}</b> Aussteller</div>
         <div class="progress-line">
           <span class="progress-label">Ausgeteilt</span>
@@ -846,8 +903,9 @@
         </div>
       </div>`;
     } else {
-      summaryEl.innerHTML = '';
+      summaryEl.innerHTML = messeSwitchHtml;
     }
+    bindSwitchMesse();
 
     listEl.innerHTML = homeHallen.map(h=>{
       const stats = homeStats[h.id] || {total:0,out:0,inn:0};
@@ -958,9 +1016,7 @@
           <span class="hall-date">${esc(fmtDate(m.createdAt))}</span>
         </div>
         <div style="display:flex; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap;">
-          ${m.active
-            ? `<span class="chip active" style="cursor:default;">${ICON.check} Aktiv</span>`
-            : `<button class="chip" data-action="activate">Als aktiv setzen</button>`}
+          <button class="chip ${m.active?'active':''}" data-action="toggle-messe-active">${m.active?ICON.check+' Aktiv':'Als aktiv setzen'}</button>
           <button class="btn btn-sm" data-action="open" style="margin-left:auto;">Hallen verwalten</button>
           <button class="btn btn-sm btn-danger" data-action="delete">${ICON.trash}</button>
         </div>
@@ -976,11 +1032,13 @@
       </div>
     `).join('');
 
-    listEl.querySelectorAll('[data-action="activate"]').forEach(btn=>{
+    listEl.querySelectorAll('[data-action="toggle-messe-active"]').forEach(btn=>{
       btn.onclick = async ()=>{
         const id = btn.closest('.hall-card').dataset.id;
+        const m = adminMessen.find(x=>x.id===id);
+        if(!m) return;
         btn.disabled = true;
-        try{ await store.setActiveMesse(id); }
+        try{ await store.setMesseActive(id, !m.active); }
         catch(err){ showBanner(`Fehler: ${esc(err && err.message || err)}`, true); btn.disabled=false; }
       };
     });
@@ -1666,6 +1724,7 @@
   /* ---------------- init ---------------- */
   (async function init(){
     try{ isAdmin = sessionStorage.getItem('ausstellerbefragung_admin') === '1'; }catch(e){ isAdmin = false; }
+    try{ homeSelectedMesseId = localStorage.getItem('ausstellerbefragung_home_messe') || null; }catch(e){ homeSelectedMesseId = null; }
     usingFirebase = await tryInitFirebase();
     renderHome();
     if(!usingFirebase){
