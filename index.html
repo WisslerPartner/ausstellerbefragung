@@ -690,10 +690,11 @@
 
   let store = LocalStore;
   let usingFirebase = false;
+  let lastFirebaseInitError = '';
   async function tryInitFirebase(){
     try{
-      if(typeof firebase === 'undefined') return false;
-      if(!firebaseConfig.apiKey || firebaseConfig.apiKey.indexOf('REPLACE') === 0) return false;
+      if(typeof firebase === 'undefined'){ lastFirebaseInitError = 'firebase SDK nicht geladen (Skript blockiert?)'; return false; }
+      if(!firebaseConfig.apiKey || firebaseConfig.apiKey.indexOf('REPLACE') === 0){ lastFirebaseInitError = 'firebaseConfig fehlt/unvollständig'; return false; }
       firebase.initializeApp(firebaseConfig);
       // Anonyme Anmeldung: die Datenbankregeln verlangen "request.auth != null",
       // damit nicht jeder, der die Seiten-URL kennt, ohne die App direkt auf
@@ -704,7 +705,16 @@
       try{ dbInst.enablePersistence({synchronizeTabs:true}).catch(()=>{}); }catch(e){}
       store = makeFirebaseStore(dbInst);
       return true;
-    }catch(e){ return false; }
+    }catch(e){
+      // Surface the real reason instead of swallowing it — a silent
+      // fallback to local-only storage with no clue why is impossible to
+      // diagnose without opening DevTools, which is a big ask for a
+      // non-technical admin. Both console (for anyone who does check) and
+      // the on-screen banner (see init()) now show it.
+      lastFirebaseInitError = (e && (e.code || e.message)) ? `${e.code||''} ${e.message||''}`.trim() : String(e);
+      console.error('Firebase-Initialisierung fehlgeschlagen:', e);
+      return false;
+    }
   }
 
   function showBanner(html, warn){
@@ -1788,7 +1798,7 @@
     usingFirebase = await tryInitFirebase();
     renderHome();
     if(!usingFirebase){
-      showBanner('Keine Verbindung zur zentralen Datenbank – Änderungen werden nur lokal auf diesem Gerät gespeichert und nicht mit anderen Geräten geteilt.', true);
+      showBanner(`Keine Verbindung zur zentralen Datenbank – Änderungen werden nur lokal auf diesem Gerät gespeichert und nicht mit anderen Geräten geteilt.${lastFirebaseInitError?`<br><span style="font-size:12px; opacity:.75;">Technische Meldung: ${esc(lastFirebaseInitError)}</span>`:''}`, true);
     }
     // A hanging "Wird gelöscht…" button etc. is otherwise impossible to
     // tell apart from "the app is just slow" — this makes an actual lost
