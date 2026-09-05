@@ -327,6 +327,21 @@
     try{ return new Date(iso).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit'}); }catch(e){ return ''; }
   }
   function uid(){ return 'x'+Math.random().toString(36).slice(2,10)+Date.now().toString(36); }
+  // Firestore write promises (set/update/delete/batch.commit) wait for a
+  // server acknowledgment and — because offline persistence is enabled —
+  // simply never resolve or reject while the connection to the database is
+  // interrupted. Without this, a lost connection made buttons like "Wird
+  // gelöscht…" hang forever with no error shown at all. Wrapping long-running
+  // admin operations in a timeout turns that silent hang into a clear,
+  // actionable message after a bounded wait.
+  function withTimeout(promise, ms, label){
+    return new Promise((resolve, reject)=>{
+      const t = setTimeout(()=>{
+        reject(new Error(`Zeitüberschreitung${label?` (${label})`:''}: Die Datenbank hat nach ${Math.round(ms/1000)}s nicht geantwortet. Bitte Internetverbindung prüfen und die Seite neu laden — die Aktion läuft im Hintergrund evtl. weiter und war beim Neuladen bereits abgeschlossen.`));
+      }, ms);
+      promise.then(v=>{ clearTimeout(t); resolve(v); }, e=>{ clearTimeout(t); reject(e); });
+    });
+  }
   // Natural sort for hall names like "1.1", "1.2", "2.0", "10.1" — compares
   // numeric chunks as numbers so "10.1" sorts after "2.1", not before it.
   function naturalCompareHalls(a, b){
@@ -1080,8 +1095,15 @@
         const id = confirmDeleteMesseId;
         btn.disabled = true; btn.textContent = 'Wird gelöscht…';
         try{
-          await store.deleteMesse(id);
+          await withTimeout(store.deleteMesse(id), 30000, 'Messe löschen');
           confirmDeleteMesseId=null;
+          // Don't wait for the live subscription to notice the deletion —
+          // it can take a while to re-fire (e.g. after the browser tab was
+          // in the background), which made a delete that had actually
+          // already finished look like it was still hanging. Update the
+          // list immediately once we know the delete itself is done.
+          adminMessen = adminMessen.filter(m=>m.id!==id);
+          renderMessenList();
         }catch(err){
           confirmDeleteMesseId=null;
           showBanner(`Fehler beim Löschen: ${esc(err && err.message || err)}`, true);
@@ -1138,28 +1160,39 @@
         return acc;
       },{total:0,out:0,inn:0});
       const pct = n=> totals.total? Math.round(n/totals.total*100):0;
+      // The checkmark reflects the actual current state (all Hallen active /
+      // all paused) instead of always sitting on "Alle aktivieren" — it was
+      // previously a fixed icon that never moved when you switched.
+      const allActive = adminHallen.every(h=>h.active);
+      const allPaused = adminHallen.every(h=>!h.active);
       summaryEl.innerHTML = `<div class="stats-bar" style="margin-top:2px;">
         <div class="stats-total">Gesamt über alle Hallen dieser Messe · <b>${totals.total}</b> Aussteller</div>
         <div class="progress-line"><span class="progress-label">Ausgeteilt</span><span class="progress-track"><span class="progress-fill out" style="width:${pct(totals.out)}%;"></span></span><span class="progress-num">${totals.out}/${totals.total}</span></div>
         <div class="progress-line"><span class="progress-label">Eingesammelt</span><span class="progress-track"><span class="progress-fill in" style="width:${pct(totals.inn)}%;"></span></span><span class="progress-num">${totals.inn}/${totals.total}</span></div>
         <div style="display:flex; gap:8px; margin-top:12px;">
-          <button class="btn btn-sm" id="activate-all-hallen" style="flex:1;">${ICON.check} Alle aktivieren</button>
-          <button class="btn btn-sm" id="pause-all-hallen" style="flex:1;">Alle pausieren</button>
+          <button class="btn btn-sm ${allActive?'active':''}" id="activate-all-hallen" style="flex:1;">${allActive?ICON.check+' ':''}Alle aktivieren</button>
+          <button class="btn btn-sm ${allPaused?'active':''}" id="pause-all-hallen" style="flex:1;">${allPaused?ICON.check+' ':''}Alle pausieren</button>
         </div>
       </div>`;
       const activateAllBtn = document.getElementById('activate-all-hallen');
       const pauseAllBtn = document.getElementById('pause-all-hallen');
       if(activateAllBtn) activateAllBtn.onclick = async ()=>{
         activateAllBtn.disabled = true; pauseAllBtn.disabled = true;
-        try{ await store.setAllHallenActive(currentMesseId, true); }
-        catch(err){ showBanner(`Fehler: ${esc(err && err.message || err)}`, true); }
-        activateAllBtn.disabled = false; pauseAllBtn.disabled = false;
+        try{
+          await withTimeout(store.setAllHallenActive(currentMesseId, true), 20000, 'Alle aktivieren');
+          // Reflect it immediately instead of waiting for the live list to
+          // notice — same reasoning as the delete fixes above.
+          adminHallen = adminHallen.map(h=>({...h, active:true}));
+          renderAdminHallenList();
+        }catch(err){ showBanner(`Fehler: ${esc(err && err.message || err)}`, true); renderAdminHallenList(); }
       };
       if(pauseAllBtn) pauseAllBtn.onclick = async ()=>{
         activateAllBtn.disabled = true; pauseAllBtn.disabled = true;
-        try{ await store.setAllHallenActive(currentMesseId, false); }
-        catch(err){ showBanner(`Fehler: ${esc(err && err.message || err)}`, true); }
-        activateAllBtn.disabled = false; pauseAllBtn.disabled = false;
+        try{
+          await withTimeout(store.setAllHallenActive(currentMesseId, false), 20000, 'Alle pausieren');
+          adminHallen = adminHallen.map(h=>({...h, active:false}));
+          renderAdminHallenList();
+        }catch(err){ showBanner(`Fehler: ${esc(err && err.message || err)}`, true); renderAdminHallenList(); }
       };
     } else {
       summaryEl.innerHTML='';
@@ -1226,8 +1259,12 @@
         const id = confirmDeleteHallId;
         btn.disabled = true; btn.textContent = 'Wird gelöscht…';
         try{
-          await store.deleteHalle(currentMesseId, id);
+          await withTimeout(store.deleteHalle(currentMesseId, id), 30000, 'Halle löschen');
           confirmDeleteHallId=null;
+          // Same reasoning as the Messe delete above: reflect the completed
+          // delete immediately rather than waiting on the live subscription.
+          adminHallen = adminHallen.filter(h=>h.id!==id);
+          renderAdminHallenList();
         }catch(err){
           confirmDeleteHallId=null;
           showBanner(`Fehler beim Löschen: ${esc(err && err.message || err)}`, true);
@@ -1437,13 +1474,13 @@
           if(!mapped.length) return null;
           return store.createHalle(messeId, name, mapped, interviewer);
         }).filter(Boolean);
-        await Promise.all(jobs);
+        await withTimeout(Promise.all(jobs), 45000, 'Import');
         goAdminHallen(messeId, messeName);
       } else {
         const name = document.getElementById('manual-name') ? document.getElementById('manual-name').value.trim() : (halleValues[0]||'Halle');
         const mapped = dataRows.map((r,i)=>({...clean(r), order:i})).filter(r=>r.stand||r.firma);
         const finalName = name || 'Halle';
-        const id = await store.createHalle(messeId, finalName, mapped, interviewer);
+        const id = await withTimeout(store.createHalle(messeId, finalName, mapped, interviewer), 30000, 'Import');
         openHalle({ id, name: finalName, interviewer }, messeId, 'admin');
       }
     }catch(err){
@@ -1752,6 +1789,20 @@
     renderHome();
     if(!usingFirebase){
       showBanner('Keine Verbindung zur zentralen Datenbank – Änderungen werden nur lokal auf diesem Gerät gespeichert und nicht mit anderen Geräten geteilt.', true);
+    }
+    // A hanging "Wird gelöscht…" button etc. is otherwise impossible to
+    // tell apart from "the app is just slow" — this makes an actual lost
+    // network connection visible immediately instead of only after a
+    // multi-minute silent wait on some write.
+    window.addEventListener('offline', ()=>{
+      showBanner('Keine Internetverbindung – Aktionen werden erst fortgesetzt, sobald die Verbindung wieder da ist. Bitte warten oder Seite neu laden.', true);
+    });
+    window.addEventListener('online', ()=>{
+      const b = app.querySelector('.banner');
+      if(b && b.textContent.indexOf('Keine Internetverbindung') !== -1) b.remove();
+    });
+    if(typeof navigator!=='undefined' && navigator.onLine===false){
+      showBanner('Keine Internetverbindung – Aktionen werden erst fortgesetzt, sobald die Verbindung wieder da ist. Bitte warten oder Seite neu laden.', true);
     }
   })();
 
