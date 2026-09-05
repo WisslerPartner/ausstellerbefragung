@@ -551,8 +551,18 @@
     function ausstellerCol(messeId, hallId){ return hallenCol(messeId).doc(hallId).collection('aussteller'); }
 
     async function cascadeDeleteHalle(messeId, hallId){
-      const snap = await ausstellerCol(messeId, hallId).limit(1000).get();
-      await Promise.all(snap.docs.map(d=>d.ref.delete()));
+      // Delete exhibitor docs in batches (one network round-trip per up to
+      // 450 docs) instead of one delete() call per exhibitor — a Halle can
+      // have hundreds of rows, and unbatched deletes made this take minutes.
+      const chunkSize = 450;
+      let snap = await ausstellerCol(messeId, hallId).limit(chunkSize).get();
+      while(snap.docs.length){
+        const batch = db.batch();
+        snap.docs.forEach(d=>{ batch.delete(d.ref); });
+        await batch.commit();
+        if(snap.docs.length < chunkSize) break;
+        snap = await ausstellerCol(messeId, hallId).limit(chunkSize).get();
+      }
       await hallenCol(messeId).doc(hallId).delete();
     }
 
