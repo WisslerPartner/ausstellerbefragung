@@ -342,6 +342,28 @@
       promise.then(v=>{ clearTimeout(t); resolve(v); }, e=>{ clearTimeout(t); reject(e); });
     });
   }
+  // Firing 30+ Hallen at once (each its own "create doc" + "batch write up
+  // to hundreds of exhibitors") all in one Promise.all turned out to
+  // overwhelm a slow/limited connection badly enough that the batched
+  // writes never came back at all (the small "create the Halle" writes
+  // still went through, which is why empty Hallen kept appearing) — only
+  // fully sequential or fully parallel were tried before, both bad at this
+  // scale. This runs at most `limit` jobs at once: still much faster than
+  // one-after-another, but without saturating the connection the way
+  // firing everything simultaneously did.
+  async function runWithConcurrency(items, limit, worker){
+    const results = new Array(items.length);
+    let idx = 0;
+    async function lane(){
+      while(idx < items.length){
+        const current = idx++;
+        results[current] = await worker(items[current], current);
+      }
+    }
+    const lanes = Array.from({length: Math.max(1, Math.min(limit, items.length))}, lane);
+    await Promise.all(lanes);
+    return results;
+  }
   // Natural sort for hall names like "1.1", "1.2", "2.0", "10.1" — compares
   // numeric chunks as numbers so "10.1" sorts after "2.1", not before it.
   function naturalCompareHalls(a, b){
@@ -610,18 +632,17 @@
       },
       async deleteMesse(messeId, onProgress){
         const hSnap = await hallenCol(messeId).limit(500).get();
-        // Delete all halls of this Messe in parallel (each internally
-        // batches its own exhibitor deletes) instead of one hall after
-        // another — with many halls, sequential deletion added up to
-        // minutes even after batching each hall's rows.
+        // Delete the halls of this Messe a few at a time instead of one
+        // after another (slow) or all at once (risks the same overload
+        // seen with imports at scale — see runWithConcurrency's comment).
         const total = hSnap.docs.length;
         let done = 0;
         if(onProgress) onProgress(done, total);
-        await Promise.all(hSnap.docs.map(hd => cascadeDeleteHalle(messeId, hd.id).then(r=>{
+        await runWithConcurrency(hSnap.docs, 5, async hd=>{
+          await cascadeDeleteHalle(messeId, hd.id);
           done++;
           if(onProgress) onProgress(done, total);
-          return r;
-        })));
+        });
         await messenCol.doc(messeId).delete();
       },
       subscribeHallenForMesse(messeId, cb){
@@ -1489,31 +1510,31 @@
           groups[key] = groups[key]||[];
           groups[key].push(r);
         });
-        // Create all halls of this import in parallel (each internally
-        // batches its own exhibitor rows) instead of one hall after
-        // another — with many halls in one spreadsheet, sequential
-        // creation added up to minutes even though each hall's own rows
-        // were already batched.
+        // Create the halls of this import a few at a time (each internally
+        // batches its own exhibitor rows) instead of either one-after-
+        // another (slow) or all 30+ at once (firing every hall's batch
+        // write simultaneously overwhelmed a weaker connection badly
+        // enough that the exhibitor writes never came back at all, while
+        // the small "create the Halle" write for each still went through —
+        // that's why empty Hallen kept appearing).
         const entries = Object.entries(groups)
           .map(([name, rows])=>({ name, mapped: rows.map((r,i)=>({...clean(r), order:i})).filter(r=>r.stand||r.firma) }))
           .filter(e=>e.mapped.length);
         const total = entries.length;
         let done = 0;
         btn.textContent = `Wird angelegt… (0/${total} Hallen)`;
-        const jobs = entries.map(e=>
-          store.createHalle(messeId, e.name, e.mapped, interviewer).then(r=>{
-            done++;
-            btn.textContent = `Wird angelegt… (${done}/${total} Hallen)`;
-            return r;
-          })
-        );
         // A real import at this scale (dozens of Hallen, thousands of
         // rows) genuinely takes longer than a fixed short timeout allows,
         // especially over a slow connection — scale the ceiling with the
         // number of Hallen instead of guessing one constant for every
         // import size.
         const timeoutMs = Math.max(45000, total*4000 + 20000);
-        await withTimeout(Promise.all(jobs), timeoutMs, 'Import');
+        await withTimeout(runWithConcurrency(entries, 5, async e=>{
+          const r = await store.createHalle(messeId, e.name, e.mapped, interviewer);
+          done++;
+          btn.textContent = `Wird angelegt… (${done}/${total} Hallen)`;
+          return r;
+        }), timeoutMs, 'Import');
         goAdminHallen(messeId, messeName);
       } else {
         const name = document.getElementById('manual-name') ? document.getElementById('manual-name').value.trim() : (halleValues[0]||'Halle');
