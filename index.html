@@ -324,6 +324,27 @@
     try{ return new Date(iso).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit'}); }catch(e){ return ''; }
   }
   function uid(){ return 'x'+Math.random().toString(36).slice(2,10)+Date.now().toString(36); }
+  // Natural sort for hall names like "1.1", "1.2", "2.0", "10.1" — compares
+  // numeric chunks as numbers so "10.1" sorts after "2.1", not before it.
+  function naturalCompareHalls(a, b){
+    const an = (a && a.name || ''), bn = (b && b.name || '');
+    const ax = an.match(/\d+|\D+/g) || [];
+    const bx = bn.match(/\d+|\D+/g) || [];
+    const len = Math.max(ax.length, bx.length);
+    for(let i=0;i<len;i++){
+      const av = ax[i], bv = bx[i];
+      if(av===undefined) return -1;
+      if(bv===undefined) return 1;
+      const an2 = /^\d+$/.test(av), bn2 = /^\d+$/.test(bv);
+      if(an2 && bn2){
+        const diff = parseInt(av,10) - parseInt(bv,10);
+        if(diff!==0) return diff;
+      } else if(av!==bv){
+        return av < bv ? -1 : 1;
+      }
+    }
+    return 0;
+  }
 
   const ICON = {
     back: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
@@ -384,7 +405,7 @@
       if(!m) return [];
       let list = Object.entries(m.hallen||{}).map(([id,h])=>({id, name:h.name, interviewer:h.interviewer||'', active:!!h.active, createdAt:h.createdAt}));
       if(onlyActive) list = list.filter(h=>h.active);
-      return list.sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||''));
+      return list.sort(naturalCompareHalls);
     }
     function statsFor(data, messeId, hallId){
       const h = data.messen[messeId] && data.messen[messeId].hallen[hallId];
@@ -558,13 +579,15 @@
       },
       subscribeHallenForMesse(messeId, cb){
         return hallenCol(messeId).orderBy('createdAt','desc').onSnapshot(snap=>{
-          cb(snap.docs.map(d=>({id:d.id, ...d.data()})));
+          const list = snap.docs.map(d=>({id:d.id, ...d.data()}));
+          list.sort(naturalCompareHalls);
+          cb(list);
         }, ()=>cb([]));
       },
       subscribeActiveHallenForMesse(messeId, cb){
         return hallenCol(messeId).where('active','==',true).onSnapshot(snap=>{
           const list = snap.docs.map(d=>({id:d.id, ...d.data()}));
-          list.sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||''));
+          list.sort(naturalCompareHalls);
           cb(list);
         }, ()=>cb([]));
       },
