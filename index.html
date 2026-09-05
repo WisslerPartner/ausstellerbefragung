@@ -1,0 +1,1588 @@
+<title>Ausstellerbefragung Eigenständig</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.13.2/firebase-app-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.13.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.13.2/firebase-auth-compat.js"></script>
+<style>
+  :root{
+    --bg:#f4f6f8;
+    --surface:#ffffff;
+    --surface-2:#eef1f5;
+    --ink:#131c26;
+    --ink-muted:#5c6b79;
+    --ink-faint:#8b97a3;
+    --border:#dde3e9;
+    --accent:#1e5fa8;
+    --accent-ink:#ffffff;
+    --accent-tint:#e6eefb;
+    --out-color:#a8641b;
+    --out-tint:#fbf0e1;
+    --out-border:#e7b273;
+    --in-color:#1e7a4e;
+    --in-tint:#e6f4ec;
+    --in-border:#7cc79e;
+    --danger:#b03434;
+    --shadow:0 1px 2px rgba(19,28,38,.06),0 4px 14px rgba(19,28,38,.05);
+    --font-display:'Archivo',system-ui,sans-serif;
+    --font-body:'IBM Plex Sans',system-ui,sans-serif;
+    --font-mono:'IBM Plex Mono',ui-monospace,monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#12181f;
+      --surface:#1b232c;
+      --surface-2:#232d37;
+      --ink:#eef2f6;
+      --ink-muted:#a3b1bd;
+      --ink-faint:#71808d;
+      --border:#2c3742;
+      --accent:#5b9bdb;
+      --accent-ink:#0d1620;
+      --accent-tint:#1c2c3e;
+      --out-color:#e0a45f;
+      --out-tint:#2f2519;
+      --out-border:#8a5f27;
+      --in-color:#6fce9c;
+      --in-tint:#173427;
+      --in-border:#2e6b49;
+      --danger:#e07a7a;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#12181f;
+    --surface:#1b232c;
+    --surface-2:#232d37;
+    --ink:#eef2f6;
+    --ink-muted:#a3b1bd;
+    --ink-faint:#71808d;
+    --border:#2c3742;
+    --accent:#5b9bdb;
+    --accent-ink:#0d1620;
+    --accent-tint:#1c2c3e;
+    --out-color:#e0a45f;
+    --out-tint:#2f2519;
+    --out-border:#8a5f27;
+    --in-color:#6fce9c;
+    --in-tint:#173427;
+    --in-border:#2e6b49;
+    --danger:#e07a7a;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--font-body);
+    -webkit-tap-highlight-color:transparent;
+  }
+  #shell{
+    max-width:560px;
+    margin:0 auto;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    background:var(--bg);
+  }
+  header.topbar{
+    position:sticky; top:0; z-index:5;
+    background:var(--bg);
+    padding:16px 16px 4px;
+    border-bottom:1px solid transparent;
+  }
+  .topbar-row{display:flex; align-items:center; gap:10px;}
+  .back-btn{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:36px; height:36px; border-radius:10px;
+    border:1px solid var(--border); background:var(--surface);
+    color:var(--ink); flex:none; cursor:pointer;
+  }
+  .kicker{
+    font-size:.72rem; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--ink-faint); font-weight:600; margin:0 0 2px;
+  }
+  h1.page-title{
+    font-family:var(--font-display); font-weight:800;
+    font-size:1.35rem; margin:0; letter-spacing:-.01em;
+    text-wrap:balance;
+  }
+  main{flex:1; padding:8px 16px calc(40px + env(safe-area-inset-bottom, 0px));}
+
+  .btn{
+    font-family:var(--font-body); font-weight:600; font-size:.92rem;
+    border-radius:11px; border:1.5px solid var(--border);
+    background:var(--surface); color:var(--ink);
+    padding:11px 16px; cursor:pointer; display:inline-flex;
+    align-items:center; justify-content:center; gap:8px;
+  }
+  .btn-primary{background:var(--accent); border-color:var(--accent); color:var(--accent-ink);}
+  .btn-block{width:100%;}
+  .btn-danger{color:var(--danger); border-color:var(--danger);}
+  .btn-sm{padding:8px 12px; font-size:.82rem; border-radius:9px;}
+  .btn:disabled{opacity:.45; cursor:not-allowed;}
+
+  /* Home / lists */
+  .hall-card{
+    display:block; width:100%; text-align:left;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:14px; padding:14px 16px; margin-bottom:10px;
+    cursor:pointer; box-shadow:var(--shadow);
+  }
+  .hall-card-top{display:flex; justify-content:space-between; align-items:baseline; gap:10px;}
+  .hall-name{font-family:var(--font-display); font-weight:700; font-size:1.05rem;}
+  .hall-date{font-size:.75rem; color:var(--ink-faint); flex:none;}
+  .hall-interviewer{font-size:.8rem; color:var(--accent); font-weight:600; margin-top:4px;}
+  .hall-progress-row{display:flex; gap:14px; margin-top:8px; font-size:.8rem; color:var(--ink-muted); flex-wrap:wrap;}
+  .dot{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px;}
+  .dot-out{background:var(--out-color);}
+  .dot-in{background:var(--in-color);}
+  .empty{
+    text-align:center; padding:48px 20px; color:var(--ink-muted);
+  }
+  .empty svg{margin-bottom:10px; opacity:.5;}
+
+  /* Import */
+  .card{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:14px; padding:18px; margin-bottom:14px; box-shadow:var(--shadow);
+  }
+  .dropzone{
+    display:block;
+    border:1.5px dashed var(--border); border-radius:14px;
+    padding:32px 16px; text-align:center; color:var(--ink-muted);
+    cursor:pointer; background:var(--surface);
+  }
+  .dropzone strong{color:var(--ink); font-weight:600;}
+  input[type=file]{display:none;}
+  label.field-label{
+    display:block; font-size:.78rem; font-weight:600; color:var(--ink-muted);
+    margin:0 0 6px; text-transform:uppercase; letter-spacing:.04em;
+  }
+  select, input[type=text], input[type=password]{
+    width:100%; padding:10px 12px; border-radius:10px;
+    border:1.5px solid var(--border); background:var(--bg); color:var(--ink);
+    font-family:var(--font-body); font-size:.92rem;
+  }
+  .field{margin-bottom:14px;}
+  .hint{font-size:.78rem; color:var(--ink-faint); margin-top:6px;}
+  .hint.warn{color:var(--out-color);}
+  table.preview{width:100%; border-collapse:collapse; font-size:.82rem; margin-top:10px;}
+  table.preview th, table.preview td{
+    text-align:left; padding:6px 8px; border-bottom:1px solid var(--border);
+  }
+  table.preview th{color:var(--ink-faint); font-weight:600; font-size:.72rem; text-transform:uppercase;}
+  .stand-cell{font-family:var(--font-mono); font-weight:600;}
+
+  /* Hall view */
+  .stats-bar{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:14px; padding:14px 16px; margin:6px 0 12px;
+  }
+  .stats-total{font-size:.8rem; color:var(--ink-muted); margin-bottom:10px;}
+  .stats-total b{color:var(--ink); font-family:var(--font-mono);}
+  .progress-line{display:flex; align-items:center; gap:10px; margin-bottom:8px;}
+  .progress-label{width:96px; flex:none; font-size:.78rem; font-weight:600; color:var(--ink-muted);}
+  .progress-track{flex:1; height:8px; border-radius:5px; background:var(--surface-2); overflow:hidden;}
+  .progress-fill{height:100%; border-radius:5px;}
+  .progress-fill.out{background:var(--out-color);}
+  .progress-fill.in{background:var(--in-color);}
+  .progress-num{width:52px; flex:none; text-align:right; font-size:.78rem; font-family:var(--font-mono); color:var(--ink-muted);}
+
+  .search-row{display:flex; gap:8px; margin-bottom:10px;}
+  .search-input{
+    flex:1; padding:10px 12px; border-radius:11px; border:1.5px solid var(--border);
+    background:var(--surface); color:var(--ink); font-size:.92rem; font-family:var(--font-body);
+  }
+  .chips{display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap;}
+  .chip{
+    padding:7px 12px; border-radius:999px; border:1.5px solid var(--border);
+    background:var(--surface); color:var(--ink-muted); font-size:.78rem; font-weight:600;
+    cursor:pointer; display:inline-flex; align-items:center; gap:5px;
+  }
+  .chip.active{background:var(--accent-tint); border-color:var(--accent); color:var(--accent);}
+  .chip:disabled{opacity:.5; cursor:not-allowed;}
+
+  .list{background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden;}
+  .row{
+    display:flex; flex-direction:column; gap:10px;
+    padding:13px 15px; border-bottom:1px solid var(--border);
+  }
+  .row:last-child{border-bottom:none;}
+  .row-top{display:flex; align-items:baseline; gap:10px;}
+  .row-nr{
+    font-family:var(--font-mono); font-weight:500; font-size:.85rem;
+    color:var(--ink-faint); flex:none; min-width:22px;
+  }
+  .row-stand{
+    font-family:var(--font-mono); font-weight:600; font-size:.85rem;
+    color:var(--ink-muted); flex:none; min-width:44px;
+  }
+  .row-firma{font-weight:600; font-size:.95rem; flex:1; text-wrap:balance;}
+  .row-actions{display:flex; gap:8px;}
+  .toggle-btn{
+    flex:1; display:flex; align-items:center; justify-content:center; gap:6px;
+    padding:9px 8px; border-radius:10px; border:1.5px solid var(--border);
+    background:var(--surface); color:var(--ink-muted); font-weight:600; font-size:.82rem;
+    cursor:pointer; font-family:var(--font-body);
+  }
+  .toggle-btn svg{flex:none;}
+  .toggle-btn.on-out{background:var(--out-tint); border-color:var(--out-border); color:var(--out-color);}
+  .toggle-btn.on-in{background:var(--in-tint); border-color:var(--in-border); color:var(--in-color);}
+  .row-meta{font-size:.72rem; color:var(--ink-faint);}
+
+  .row-comment{display:flex; align-items:flex-start; gap:8px;}
+  .row-comment-text{
+    flex:1; font-size:.83rem; font-style:italic; color:var(--ink-muted);
+    text-wrap:pretty;
+  }
+  .comment-toggle-btn{
+    display:inline-flex; align-items:center; gap:5px;
+    background:none; border:none; padding:2px 0; margin:0;
+    color:var(--accent); font-size:.78rem; font-weight:600;
+    font-family:var(--font-body); cursor:pointer; flex:none;
+  }
+  .comment-editor textarea{
+    width:100%; min-height:64px; padding:9px 11px; border-radius:10px;
+    border:1.5px solid var(--border); background:var(--bg); color:var(--ink);
+    font-family:var(--font-body); font-size:.88rem; resize:vertical;
+  }
+  .comment-editor-actions{display:flex; gap:8px; margin-top:8px;}
+
+  .hall-interviewer-bar{margin:-2px 0 12px;}
+  .interviewer-row{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  .interviewer-row .interviewer-label{
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:.85rem; font-weight:600; color:var(--accent);
+  }
+  .interviewer-editor input{
+    width:100%; padding:9px 11px; border-radius:10px;
+    border:1.5px solid var(--border); background:var(--bg); color:var(--ink);
+    font-family:var(--font-body); font-size:.88rem;
+  }
+  .interviewer-editor-actions{display:flex; gap:8px; margin-top:8px;}
+
+  .toolbar{display:flex; gap:10px; margin-top:16px;}
+  .banner{
+    background:var(--accent-tint); color:var(--accent); border-radius:10px;
+    padding:10px 12px; font-size:.8rem; margin-bottom:12px;
+  }
+  .banner.warn{background:var(--out-tint); color:var(--out-color);}
+
+  ::selection{background:var(--accent-tint);}
+</style>
+
+<div id="shell">
+  <header class="topbar">
+    <div class="topbar-row" id="topbar-row"></div>
+  </header>
+  <main id="app"></main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* =================================================================
+     EINRICHTUNG — hier Ihre eigenen Werte eintragen
+     ================================================================= */
+
+  // Der PIN für den Verwaltungsbereich (frei wählbar, z. B. 4-6 Ziffern).
+  // Hinweis: Das ist eine Zugriffshürde in der Oberfläche, keine echte
+  // Verschlüsselung — für "Interviewer:innen von der Verwaltung
+  // fernhalten" reicht das, vor technisch versierten Angreifern schützt
+  // es nicht.
+  const ADMIN_PIN = '270560';
+
+  // Der Codeblock aus der Firebase-Konsole (Projekteinstellungen ->
+  // Meine Apps -> Web-App). Einfach das komplette Objekt hier einsetzen.
+  const firebaseConfig = {
+    apiKey: 'AIzaSyD7DkuwOQQ9NI6x24OYBO6uNObxzKAw7NM',
+    authDomain: 'ausstellerbefragungen.firebaseapp.com',
+    projectId: 'ausstellerbefragungen',
+    storageBucket: 'ausstellerbefragungen.firebasestorage.app',
+    messagingSenderId: '64897432876',
+    appId: '1:64897432876:web:665a6ffffd46d7e1718089'
+  };
+
+  /* ================================================================= */
+
+  /* ---------------- utilities ---------------- */
+  function esc(s){ return (s===undefined||s===null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function fmtTime(iso){
+    if(!iso) return null;
+    try{ return new Date(iso).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return null; }
+  }
+  function fmtDate(iso){
+    if(!iso) return '';
+    try{ return new Date(iso).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit'}); }catch(e){ return ''; }
+  }
+  function uid(){ return 'x'+Math.random().toString(36).slice(2,10)+Date.now().toString(36); }
+
+  const ICON = {
+    back: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
+    plus: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+    check: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
+    out: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>',
+    inn: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7L7 17M15 17H7V9"/></svg>',
+    empty: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
+    download: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>',
+    trash: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2m-9 0l1 12a2 2 0 002 2h4a2 2 0 002-2l1-12"/></svg>',
+    search: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
+    comment: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 01-8.75 8.37A8.5 8.5 0 013 12.13 8.38 8.38 0 0111.37 3.5 8.5 8.5 0 0121 11.5z"/></svg>',
+    user: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c1.4-3.6 4.3-5.5 7.5-5.5s6.1 1.9 7.5 5.5"/></svg>',
+    gear: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>'
+  };
+
+  /* ---------------- storage backends ----------------
+     Both stores implement the same interface:
+       subscribeMessen(cb), subscribeActiveMesse(cb),
+       createMesse(name), setActiveMesse(id), deleteMesse(id),
+       subscribeHallenForMesse(messeId, cb),
+       subscribeActiveHallenForMesse(messeId, cb),
+       subscribeHalleStats(messeId, hallId, cb),
+       createHalle(messeId, name, rows, interviewer),
+       setHalleActive(messeId, hallId, active),
+       deleteHalle(messeId, hallId),
+       updateHalleInterviewer(messeId, hallId, text),
+       subscribeAussteller(messeId, hallId, cb),
+       toggle(messeId, hallId, exhibitorId, field, currentValue),
+       updateComment(messeId, hallId, exhibitorId, text)
+  ----------------------------------------------------- */
+
+  // Offline / no-connection fallback: everything stays on this one device.
+  const LocalStore = (function(){
+    const KEY = 'ausstellerbefragung_standalone_v1';
+    function readAll(){
+      try{ return JSON.parse(localStorage.getItem(KEY) || '{"messen":{}}'); }
+      catch(e){ return {messen:{}}; }
+    }
+    function writeAll(data){ try{ localStorage.setItem(KEY, JSON.stringify(data)); }catch(e){} }
+
+    const messenListeners = [];
+    const activeMesseListeners = [];
+    const hallenListeners = {};
+    const activeHallenListeners = {};
+    const statsListeners = {};
+    const ausstellerListeners = {};
+
+    function listMessenSync(){
+      const data = readAll();
+      return Object.entries(data.messen).map(([id,m])=>({id, name:m.name, active:!!m.active, createdAt:m.createdAt}))
+        .sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||''));
+    }
+    function activeMesseSync(){ return listMessenSync().find(m=>m.active) || null; }
+    function listHallenSync(messeId, onlyActive){
+      const data = readAll();
+      const m = data.messen[messeId];
+      if(!m) return [];
+      let list = Object.entries(m.hallen||{}).map(([id,h])=>({id, name:h.name, interviewer:h.interviewer||'', active:!!h.active, createdAt:h.createdAt}));
+      if(onlyActive) list = list.filter(h=>h.active);
+      return list.sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||''));
+    }
+    function statsFor(data, messeId, hallId){
+      const h = data.messen[messeId] && data.messen[messeId].hallen[hallId];
+      const rows = Object.values((h && h.aussteller) || {});
+      return {total: rows.length, out: rows.filter(r=>r.out).length, inn: rows.filter(r=>r.in).length};
+    }
+    function notifyMessen(){
+      const list = listMessenSync();
+      messenListeners.forEach(cb=>cb(list));
+      const active = activeMesseSync();
+      activeMesseListeners.forEach(cb=>cb(active));
+    }
+    function notifyHallen(messeId){
+      (hallenListeners[messeId]||[]).forEach(cb=>cb(listHallenSync(messeId,false)));
+      (activeHallenListeners[messeId]||[]).forEach(cb=>cb(listHallenSync(messeId,true)));
+    }
+    function notifyAussteller(messeId, hallId){
+      const data = readAll();
+      const h = data.messen[messeId] && data.messen[messeId].hallen[hallId];
+      const rows = Object.values((h && h.aussteller) || {}).sort((a,b)=>a.order-b.order);
+      const key = messeId+'|'+hallId;
+      (ausstellerListeners[key]||[]).forEach(cb=>cb(rows));
+      (statsListeners[key]||[]).forEach(cb=>cb(statsFor(data, messeId, hallId)));
+    }
+
+    return {
+      subscribeMessen(cb){
+        messenListeners.push(cb); cb(listMessenSync());
+        return ()=>{ const i=messenListeners.indexOf(cb); if(i>-1) messenListeners.splice(i,1); };
+      },
+      subscribeActiveMesse(cb){
+        activeMesseListeners.push(cb); cb(activeMesseSync());
+        return ()=>{ const i=activeMesseListeners.indexOf(cb); if(i>-1) activeMesseListeners.splice(i,1); };
+      },
+      async createMesse(name){
+        const data = readAll();
+        const id = uid();
+        data.messen[id] = {name, active:false, createdAt:new Date().toISOString(), hallen:{}};
+        writeAll(data); notifyMessen();
+        return id;
+      },
+      async setActiveMesse(messeId){
+        const data = readAll();
+        Object.values(data.messen).forEach(m=>{ m.active=false; });
+        if(data.messen[messeId]) data.messen[messeId].active = true;
+        writeAll(data); notifyMessen();
+      },
+      async deleteMesse(messeId){
+        const data = readAll();
+        delete data.messen[messeId];
+        writeAll(data); notifyMessen();
+      },
+      subscribeHallenForMesse(messeId, cb){
+        hallenListeners[messeId] = hallenListeners[messeId]||[];
+        hallenListeners[messeId].push(cb); cb(listHallenSync(messeId,false));
+        return ()=>{ hallenListeners[messeId] = (hallenListeners[messeId]||[]).filter(f=>f!==cb); };
+      },
+      subscribeActiveHallenForMesse(messeId, cb){
+        activeHallenListeners[messeId] = activeHallenListeners[messeId]||[];
+        activeHallenListeners[messeId].push(cb); cb(listHallenSync(messeId,true));
+        return ()=>{ activeHallenListeners[messeId] = (activeHallenListeners[messeId]||[]).filter(f=>f!==cb); };
+      },
+      subscribeHalleStats(messeId, hallId, cb){
+        const key = messeId+'|'+hallId;
+        statsListeners[key] = statsListeners[key]||[];
+        statsListeners[key].push(cb); cb(statsFor(readAll(), messeId, hallId));
+        return ()=>{ statsListeners[key] = (statsListeners[key]||[]).filter(f=>f!==cb); };
+      },
+      async createHalle(messeId, name, rows, interviewer){
+        const data = readAll();
+        if(!data.messen[messeId]) return null;
+        const id = uid();
+        const aussteller = {};
+        rows.forEach(r=>{
+          const rid = uid();
+          aussteller[rid] = {id:rid, stand:r.stand, firma:r.firma, nr:r.nr||'', order:r.order, out:false, outAt:null, in:false, inAt:null, kommentar:''};
+        });
+        data.messen[messeId].hallen[id] = {name, interviewer:interviewer||'', active:false, createdAt:new Date().toISOString(), aussteller};
+        writeAll(data); notifyHallen(messeId);
+        return id;
+      },
+      async setHalleActive(messeId, hallId, active){
+        const data = readAll();
+        const h = data.messen[messeId] && data.messen[messeId].hallen[hallId];
+        if(!h) return;
+        h.active = active;
+        writeAll(data); notifyHallen(messeId);
+      },
+      async deleteHalle(messeId, hallId){
+        const data = readAll();
+        if(data.messen[messeId]) delete data.messen[messeId].hallen[hallId];
+        writeAll(data); notifyHallen(messeId);
+      },
+      async updateHalleInterviewer(messeId, hallId, text){
+        const data = readAll();
+        const h = data.messen[messeId] && data.messen[messeId].hallen[hallId];
+        if(!h) return;
+        h.interviewer = text;
+        writeAll(data); notifyHallen(messeId);
+      },
+      subscribeAussteller(messeId, hallId, cb){
+        const key = messeId+'|'+hallId;
+        ausstellerListeners[key] = ausstellerListeners[key]||[];
+        ausstellerListeners[key].push(cb);
+        const data = readAll();
+        const h = data.messen[messeId] && data.messen[messeId].hallen[hallId];
+        const rows = Object.values((h && h.aussteller)||{}).sort((a,b)=>a.order-b.order);
+        cb(rows);
+        return ()=>{ ausstellerListeners[key] = (ausstellerListeners[key]||[]).filter(f=>f!==cb); };
+      },
+      async toggle(messeId, hallId, exhibitorId, field){
+        const data = readAll();
+        const row = data.messen[messeId] && data.messen[messeId].hallen[hallId] && data.messen[messeId].hallen[hallId].aussteller[exhibitorId];
+        if(!row) return;
+        const next = !row[field];
+        row[field] = next;
+        row[field+'At'] = next ? new Date().toISOString() : null;
+        writeAll(data); notifyAussteller(messeId, hallId);
+      },
+      async updateComment(messeId, hallId, exhibitorId, text){
+        const data = readAll();
+        const row = data.messen[messeId] && data.messen[messeId].hallen[hallId] && data.messen[messeId].hallen[hallId].aussteller[exhibitorId];
+        if(!row) return;
+        row.kommentar = text;
+        writeAll(data); notifyAussteller(messeId, hallId);
+      },
+      mode:'local'
+    };
+  })();
+
+  // Firebase Firestore-backed store: shared, realtime, visible centrally
+  // to every device that opens this file — independent of Claude.
+  function makeFirebaseStore(db){
+    const messenCol = db.collection('messen');
+    function hallenCol(messeId){ return messenCol.doc(messeId).collection('hallen'); }
+    function ausstellerCol(messeId, hallId){ return hallenCol(messeId).doc(hallId).collection('aussteller'); }
+
+    async function cascadeDeleteHalle(messeId, hallId){
+      const snap = await ausstellerCol(messeId, hallId).limit(1000).get();
+      await Promise.all(snap.docs.map(d=>d.ref.delete()));
+      await hallenCol(messeId).doc(hallId).delete();
+    }
+
+    return {
+      subscribeMessen(cb){
+        return messenCol.orderBy('createdAt','desc').onSnapshot(snap=>{
+          cb(snap.docs.map(d=>({id:d.id, ...d.data()})));
+        }, ()=>cb([]));
+      },
+      subscribeActiveMesse(cb){
+        return messenCol.where('active','==',true).onSnapshot(snap=>{
+          const docs = snap.docs;
+          cb(docs.length ? {id:docs[0].id, ...docs[0].data()} : null);
+        }, ()=>cb(null));
+      },
+      async createMesse(name){
+        const ref = await messenCol.add({name, active:false, createdAt:new Date().toISOString()});
+        return ref.id;
+      },
+      async setActiveMesse(messeId){
+        const snap = await messenCol.where('active','==',true).get();
+        const batch = db.batch();
+        snap.docs.forEach(d=>{ if(d.id!==messeId) batch.update(d.ref, {active:false}); });
+        batch.update(messenCol.doc(messeId), {active:true});
+        await batch.commit();
+      },
+      async deleteMesse(messeId){
+        const hSnap = await hallenCol(messeId).limit(500).get();
+        for(const hd of hSnap.docs){ await cascadeDeleteHalle(messeId, hd.id); }
+        await messenCol.doc(messeId).delete();
+      },
+      subscribeHallenForMesse(messeId, cb){
+        return hallenCol(messeId).orderBy('createdAt','desc').onSnapshot(snap=>{
+          cb(snap.docs.map(d=>({id:d.id, ...d.data()})));
+        }, ()=>cb([]));
+      },
+      subscribeActiveHallenForMesse(messeId, cb){
+        return hallenCol(messeId).where('active','==',true).onSnapshot(snap=>{
+          const list = snap.docs.map(d=>({id:d.id, ...d.data()}));
+          list.sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||''));
+          cb(list);
+        }, ()=>cb([]));
+      },
+      subscribeHalleStats(messeId, hallId, cb){
+        return ausstellerCol(messeId, hallId).limit(1000).onSnapshot(snap=>{
+          const rows = snap.docs.map(d=>d.data());
+          cb({total: rows.length, out: rows.filter(r=>r.out).length, inn: rows.filter(r=>r.in).length});
+        }, ()=>{});
+      },
+      async createHalle(messeId, name, rows, interviewer){
+        const ref = await hallenCol(messeId).add({name, interviewer: interviewer||'', active:false, createdAt: new Date().toISOString()});
+        const col = ref.collection('aussteller');
+        // Write in batches (one network round-trip per up-to-450 rows)
+        // instead of one request per exhibitor — much faster for long lists.
+        const chunkSize = 450;
+        for(let i=0; i<rows.length; i+=chunkSize){
+          const chunk = rows.slice(i, i+chunkSize);
+          const batch = db.batch();
+          chunk.forEach(r=>{
+            const docRef = col.doc();
+            batch.set(docRef, {
+              stand:r.stand, firma:r.firma, nr:r.nr||'', order:r.order,
+              out:false, outAt:null, in:false, inAt:null, kommentar:''
+            });
+          });
+          await batch.commit();
+        }
+        return ref.id;
+      },
+      async setHalleActive(messeId, hallId, active){
+        await hallenCol(messeId).doc(hallId).update({active});
+      },
+      async deleteHalle(messeId, hallId){
+        await cascadeDeleteHalle(messeId, hallId);
+      },
+      async updateHalleInterviewer(messeId, hallId, text){
+        await hallenCol(messeId).doc(hallId).update({interviewer:text});
+      },
+      subscribeAussteller(messeId, hallId, cb){
+        return ausstellerCol(messeId, hallId).orderBy('order','asc').onSnapshot(snap=>{
+          cb(snap.docs.map(d=>({id:d.id, ...d.data()})));
+        }, ()=>cb([]));
+      },
+      async toggle(messeId, hallId, exhibitorId, field, currentValue){
+        const next = !currentValue;
+        const patch = {}; patch[field]=next; patch[field+'At']= next? new Date().toISOString(): null;
+        await ausstellerCol(messeId, hallId).doc(exhibitorId).update(patch);
+      },
+      async updateComment(messeId, hallId, exhibitorId, text){
+        await ausstellerCol(messeId, hallId).doc(exhibitorId).update({kommentar:text});
+      },
+      mode:'firebase'
+    };
+  }
+
+  let store = LocalStore;
+  let usingFirebase = false;
+  async function tryInitFirebase(){
+    try{
+      if(typeof firebase === 'undefined') return false;
+      if(!firebaseConfig.apiKey || firebaseConfig.apiKey.indexOf('REPLACE') === 0) return false;
+      firebase.initializeApp(firebaseConfig);
+      // Anonyme Anmeldung: die Datenbankregeln verlangen "request.auth != null",
+      // damit nicht jeder, der die Seiten-URL kennt, ohne die App direkt auf
+      // die Datenbank zugreifen kann. Das ist keine Nutzer-Anmeldung mit
+      // Passwort, sondern ein technischer Ausweis, den nur die App ausstellt.
+      await firebase.auth().signInAnonymously();
+      const dbInst = firebase.firestore();
+      try{ dbInst.enablePersistence({synchronizeTabs:true}).catch(()=>{}); }catch(e){}
+      store = makeFirebaseStore(dbInst);
+      return true;
+    }catch(e){ return false; }
+  }
+
+  function showBanner(html, warn){
+    const existing = app.querySelector('.banner');
+    if(existing) existing.remove();
+    app.insertAdjacentHTML('afterbegin', `<div class="banner ${warn?'warn':''}">${html}</div>`);
+  }
+
+  /* ---------------- app state / router ---------------- */
+  const app = document.getElementById('app');
+  const topbarRow = document.getElementById('topbar-row');
+  let view = 'home';
+  let isAdmin = false;
+  let pinError = false;
+
+  let currentMesseId = null;
+  let currentMesseName = '';
+  let currentHall = null; // {messeId, id, name, interviewer}
+  let hallOrigin = 'home'; // 'home' | 'admin'
+  let hallRows = [];
+  let hallUnsub = null;
+  let search = '';
+  let filterMode = 'all';
+  let importState = null;
+  let confirmingDelete = false;
+  let editingCommentId = null;
+  let commentDraft = '';
+  let editingInterviewer = false;
+  let interviewerDraft = '';
+
+  let homeMesseUnsub = null;
+  let homeActiveMesse = null;
+  let homeHallenUnsub = null;
+  let homeStatsUnsubs = {};
+  let homeHallen = [];
+  let homeStats = {};
+
+  let adminMessenUnsub = null;
+  let adminMessen = [];
+  let confirmDeleteMesseId = null;
+  let newMesseNameDraft = '';
+
+  let adminHallenUnsub = null;
+  let adminHallenStatsUnsubs = {};
+  let adminHallen = [];
+  let adminHallenStats = {};
+
+  function setTopbar(html){ topbarRow.innerHTML = html; }
+
+  function stopHomeHallen(){
+    if(homeHallenUnsub){ homeHallenUnsub(); homeHallenUnsub=null; }
+    Object.values(homeStatsUnsubs).forEach(u=>u()); homeStatsUnsubs={};
+  }
+  function stopAdminHallen(){
+    if(adminHallenUnsub){ adminHallenUnsub(); adminHallenUnsub=null; }
+    Object.values(adminHallenStatsUnsubs).forEach(u=>u()); adminHallenStatsUnsubs={};
+  }
+  function stopAll(){
+    if(homeMesseUnsub){ homeMesseUnsub(); homeMesseUnsub=null; }
+    stopHomeHallen();
+    if(adminMessenUnsub){ adminMessenUnsub(); adminMessenUnsub=null; }
+    stopAdminHallen();
+    if(hallUnsub){ hallUnsub(); hallUnsub=null; }
+  }
+
+  function loadingRow(){ return `<div class="hint" style="padding:20px 0;">Lade…</div>`; }
+
+  /* ---------------- navigation ---------------- */
+  function goHome(){
+    stopAll();
+    currentHall=null; hallRows=[]; search=''; filterMode='all';
+    view='home';
+    renderHome();
+  }
+  function goAdminPin(){
+    stopAll();
+    pinError=false;
+    view='admin-pin';
+    renderAdminPin();
+  }
+  function goAdminMessen(){
+    stopAll();
+    confirmDeleteMesseId=null; newMesseNameDraft='';
+    view='admin-messen';
+    renderAdminMessen();
+  }
+  function goAdminHallen(messeId, messeName){
+    stopAll();
+    currentMesseId = messeId;
+    currentMesseName = messeName;
+    view='admin-hallen';
+    renderAdminHallenShell();
+  }
+
+  /* ---------------- HOME (Interviewer:innen) ---------------- */
+  function renderHome(){
+    homeHallen=[]; homeStats={}; homeActiveMesse=null;
+    setTopbar(`
+      <div style="flex:1;">
+        <p class="kicker">Wissler &amp; Partner</p>
+        <h1 class="page-title">Ausstellerbefragung</h1>
+      </div>
+      <button class="back-btn" id="admin-btn" title="Verwaltung">${ICON.gear}</button>
+    `);
+    document.getElementById('admin-btn').onclick = ()=> isAdmin ? goAdminMessen() : goAdminPin();
+    app.innerHTML = `<div id="home-summary"></div><div id="home-list">${loadingRow()}</div>`;
+
+    homeMesseUnsub = store.subscribeActiveMesse(messe=>{
+      homeActiveMesse = messe;
+      stopHomeHallen();
+      if(!messe){
+        renderHomeNoMesse();
+        return;
+      }
+      homeHallenUnsub = store.subscribeActiveHallenForMesse(messe.id, list=>{
+        homeHallen = list;
+        const ids = new Set(list.map(h=>h.id));
+        Object.keys(homeStatsUnsubs).forEach(id=>{
+          if(!ids.has(id)){ homeStatsUnsubs[id](); delete homeStatsUnsubs[id]; delete homeStats[id]; }
+        });
+        list.forEach(h=>{
+          if(!homeStatsUnsubs[h.id]){
+            homeStatsUnsubs[h.id] = store.subscribeHalleStats(messe.id, h.id, stats=>{
+              homeStats[h.id]=stats; renderHomeList();
+            });
+          }
+        });
+        renderHomeList();
+      });
+    });
+  }
+
+  function renderHomeNoMesse(){
+    const summaryEl = document.getElementById('home-summary');
+    const listEl = document.getElementById('home-list');
+    if(summaryEl) summaryEl.innerHTML='';
+    if(listEl) listEl.innerHTML = `<div class="empty">${ICON.empty}<div>Aktuell ist keine Messe aktiv.<br>Bitte wenden Sie sich an die Administration.</div></div>`;
+  }
+
+  function renderHomeList(){
+    const summaryEl = document.getElementById('home-summary');
+    const listEl = document.getElementById('home-list');
+    if(!listEl || !summaryEl || !homeActiveMesse) return;
+
+    if(!homeHallen.length){
+      summaryEl.innerHTML='';
+      listEl.innerHTML = `<div class="empty">${ICON.empty}<div>Aktuell sind keine Hallen aktiv.</div></div>`;
+      return;
+    }
+
+    if(homeHallen.length>1){
+      const totals = homeHallen.reduce((acc,h)=>{
+        const s = homeStats[h.id] || {total:0,out:0,inn:0};
+        acc.total+=s.total; acc.out+=s.out; acc.inn+=s.inn;
+        return acc;
+      }, {total:0,out:0,inn:0});
+      const pct = n => totals.total? Math.round(n/totals.total*100) : 0;
+      summaryEl.innerHTML = `<div class="stats-bar" style="margin-top:2px;">
+        <div class="stats-total">Gesamt über alle aktiven Hallen · <b>${totals.total}</b> Aussteller</div>
+        <div class="progress-line">
+          <span class="progress-label">Ausgeteilt</span>
+          <span class="progress-track"><span class="progress-fill out" style="width:${pct(totals.out)}%;"></span></span>
+          <span class="progress-num">${totals.out}/${totals.total}</span>
+        </div>
+        <div class="progress-line">
+          <span class="progress-label">Eingesammelt</span>
+          <span class="progress-track"><span class="progress-fill in" style="width:${pct(totals.inn)}%;"></span></span>
+          <span class="progress-num">${totals.inn}/${totals.total}</span>
+        </div>
+      </div>`;
+    } else {
+      summaryEl.innerHTML = '';
+    }
+
+    listEl.innerHTML = homeHallen.map(h=>{
+      const stats = homeStats[h.id] || {total:0,out:0,inn:0};
+      return `<button class="hall-card" data-id="${esc(h.id)}">
+        <div class="hall-card-top">
+          <span class="hall-name">${esc(h.name)}</span>
+          <span class="hall-date">${esc(fmtDate(h.createdAt))}</span>
+        </div>
+        ${h.interviewer?`<div class="hall-interviewer">${esc(h.interviewer)}</div>`:''}
+        <div class="hall-progress-row">
+          <span><span class="dot dot-out"></span>${stats.out}/${stats.total} ausgeteilt</span>
+          <span><span class="dot dot-in"></span>${stats.inn}/${stats.total} eingesammelt</span>
+        </div>
+      </button>`;
+    }).join('');
+    listEl.querySelectorAll('.hall-card').forEach(c=>{
+      c.onclick = ()=> openHalle(homeHallen.find(h=>h.id===c.dataset.id), homeActiveMesse.id, 'home');
+    });
+  }
+
+  /* ---------------- ADMIN: PIN ---------------- */
+  function renderAdminPin(){
+    setTopbar(`
+      <button class="back-btn" id="back-btn">${ICON.back}</button>
+      <div><p class="kicker">Wissler &amp; Partner</p><h1 class="page-title">Verwaltung</h1></div>
+    `);
+    document.getElementById('back-btn').onclick = goHome;
+    app.innerHTML = `
+      <div class="card">
+        <div class="field">
+          <label class="field-label">PIN eingeben</label>
+          <input type="password" inputmode="numeric" id="pin-input" placeholder="••••">
+        </div>
+        ${pinError?'<p class="hint warn">Falscher PIN.</p>':''}
+        <button class="btn btn-primary btn-block" id="pin-confirm">Bestätigen</button>
+      </div>
+    `;
+    const inp = document.getElementById('pin-input');
+    inp.focus();
+    function tryPin(){
+      if(inp.value === ADMIN_PIN){
+        isAdmin = true; pinError=false;
+        try{ sessionStorage.setItem('ausstellerbefragung_admin','1'); }catch(e){}
+        goAdminMessen();
+      } else {
+        pinError = true;
+        renderAdminPin();
+      }
+    }
+    document.getElementById('pin-confirm').onclick = tryPin;
+    inp.onkeydown = e=>{ if(e.key==='Enter') tryPin(); };
+  }
+
+  /* ---------------- ADMIN: Messen ---------------- */
+  function renderAdminMessen(){
+    setTopbar(`
+      <button class="back-btn" id="back-btn">${ICON.back}</button>
+      <div><p class="kicker">Verwaltung</p><h1 class="page-title">Messen</h1></div>
+    `);
+    document.getElementById('back-btn').onclick = goHome;
+    app.innerHTML = `
+      <div id="messen-list">${loadingRow()}</div>
+      <div class="card">
+        <label class="field-label">Neue Messe anlegen</label>
+        <input type="text" id="new-messe-name" placeholder="z. B. Automechanika 2026" value="${esc(newMesseNameDraft)}">
+        <button class="btn btn-primary btn-block" id="create-messe" style="margin-top:10px;">${ICON.plus} Anlegen</button>
+      </div>
+      <button class="btn btn-block" id="admin-logout" style="margin-top:2px;">Abmelden (zur Interviewer-Ansicht)</button>
+    `;
+    document.getElementById('admin-logout').onclick = ()=>{
+      isAdmin = false;
+      try{ sessionStorage.removeItem('ausstellerbefragung_admin'); }catch(e){}
+      goHome();
+    };
+    document.getElementById('new-messe-name').oninput = e=>{ newMesseNameDraft = e.target.value; };
+    document.getElementById('create-messe').onclick = async ()=>{
+      const name = document.getElementById('new-messe-name').value.trim();
+      if(!name) return;
+      const btn = document.getElementById('create-messe');
+      btn.disabled = true;
+      try{
+        await store.createMesse(name);
+        newMesseNameDraft='';
+        const inp = document.getElementById('new-messe-name');
+        if(inp) inp.value='';
+      }catch(err){
+        showBanner(`Fehler beim Anlegen: ${esc(err && err.message || err)}`, true);
+      }
+      btn.disabled = false;
+    };
+    adminMessenUnsub = store.subscribeMessen(list=>{
+      adminMessen = list;
+      renderMessenList();
+    });
+  }
+
+  function renderMessenList(){
+    const listEl = document.getElementById('messen-list');
+    if(!listEl) return;
+    if(!adminMessen.length){
+      listEl.innerHTML = `<div class="empty">${ICON.empty}<div>Noch keine Messe angelegt.</div></div>`;
+      return;
+    }
+    listEl.innerHTML = adminMessen.map(m=>`
+      <div class="hall-card" data-id="${esc(m.id)}" style="cursor:default;">
+        <div class="hall-card-top">
+          <span class="hall-name">${esc(m.name)}</span>
+          <span class="hall-date">${esc(fmtDate(m.createdAt))}</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap;">
+          ${m.active
+            ? `<span class="chip active" style="cursor:default;">${ICON.check} Aktiv</span>`
+            : `<button class="chip" data-action="activate">Als aktiv setzen</button>`}
+          <button class="btn btn-sm" data-action="open" style="margin-left:auto;">Hallen verwalten</button>
+          <button class="btn btn-sm btn-danger" data-action="delete">${ICON.trash}</button>
+        </div>
+        ${confirmDeleteMesseId===m.id?`
+          <div class="banner warn" style="margin-top:10px; margin-bottom:0;">
+            Diese Messe inkl. aller Hallen und Ausstellerdaten endgültig löschen?
+            <div style="display:flex; gap:8px; margin-top:8px;">
+              <button class="btn btn-sm" data-action="cancel-delete" style="flex:1;">Abbrechen</button>
+              <button class="btn btn-sm btn-danger" data-action="confirm-delete" style="flex:1;">Endgültig löschen</button>
+            </div>
+          </div>
+        `:''}
+      </div>
+    `).join('');
+
+    listEl.querySelectorAll('[data-action="activate"]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        const id = btn.closest('.hall-card').dataset.id;
+        btn.disabled = true;
+        try{ await store.setActiveMesse(id); }
+        catch(err){ showBanner(`Fehler: ${esc(err && err.message || err)}`, true); btn.disabled=false; }
+      };
+    });
+    listEl.querySelectorAll('[data-action="open"]').forEach(btn=>{
+      btn.onclick = ()=>{
+        const id = btn.closest('.hall-card').dataset.id;
+        const m = adminMessen.find(x=>x.id===id);
+        goAdminHallen(id, m ? m.name : '');
+      };
+    });
+    listEl.querySelectorAll('[data-action="delete"]').forEach(btn=>{
+      btn.onclick = ()=>{
+        confirmDeleteMesseId = btn.closest('.hall-card').dataset.id;
+        renderMessenList();
+      };
+    });
+    listEl.querySelectorAll('[data-action="cancel-delete"]').forEach(btn=>{
+      btn.onclick = ()=>{ confirmDeleteMesseId=null; renderMessenList(); };
+    });
+    listEl.querySelectorAll('[data-action="confirm-delete"]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        const id = confirmDeleteMesseId;
+        btn.disabled = true; btn.textContent = 'Wird gelöscht…';
+        try{
+          await store.deleteMesse(id);
+          confirmDeleteMesseId=null;
+        }catch(err){
+          confirmDeleteMesseId=null;
+          showBanner(`Fehler beim Löschen: ${esc(err && err.message || err)}`, true);
+          renderMessenList();
+        }
+      };
+    });
+  }
+
+  /* ---------------- ADMIN: Hallen (innerhalb einer Messe) ---------------- */
+  function renderAdminHallenShell(){
+    setTopbar(`
+      <button class="back-btn" id="back-btn">${ICON.back}</button>
+      <div><p class="kicker">Verwaltung</p><h1 class="page-title">${esc(currentMesseName)}</h1></div>
+    `);
+    document.getElementById('back-btn').onclick = goAdminMessen;
+    app.innerHTML = `
+      <div id="admin-hallen-summary"></div>
+      <div id="admin-hallen-list">${loadingRow()}</div>
+      <button class="btn btn-primary btn-block" id="new-halle" style="margin-top:6px;">${ICON.plus} Neue Halle anlegen</button>
+    `;
+    document.getElementById('new-halle').onclick = ()=> startImport(currentMesseId, currentMesseName);
+
+    adminHallenUnsub = store.subscribeHallenForMesse(currentMesseId, list=>{
+      adminHallen = list;
+      const ids = new Set(list.map(h=>h.id));
+      Object.keys(adminHallenStatsUnsubs).forEach(id=>{
+        if(!ids.has(id)){ adminHallenStatsUnsubs[id](); delete adminHallenStatsUnsubs[id]; delete adminHallenStats[id]; }
+      });
+      list.forEach(h=>{
+        if(!adminHallenStatsUnsubs[h.id]){
+          adminHallenStatsUnsubs[h.id] = store.subscribeHalleStats(currentMesseId, h.id, stats=>{
+            adminHallenStats[h.id]=stats; renderAdminHallenList();
+          });
+        }
+      });
+      renderAdminHallenList();
+    });
+  }
+
+  function renderAdminHallenList(){
+    const summaryEl = document.getElementById('admin-hallen-summary');
+    const listEl = document.getElementById('admin-hallen-list');
+    if(!listEl || !summaryEl) return;
+    if(!adminHallen.length){
+      summaryEl.innerHTML='';
+      listEl.innerHTML = `<div class="empty">${ICON.empty}<div>Noch keine Halle in dieser Messe.<br>Legen Sie unten eine neue Halle an.</div></div>`;
+      return;
+    }
+    if(adminHallen.length>1){
+      const totals = adminHallen.reduce((acc,h)=>{
+        const s = adminHallenStats[h.id]||{total:0,out:0,inn:0};
+        acc.total+=s.total; acc.out+=s.out; acc.inn+=s.inn;
+        return acc;
+      },{total:0,out:0,inn:0});
+      const pct = n=> totals.total? Math.round(n/totals.total*100):0;
+      summaryEl.innerHTML = `<div class="stats-bar" style="margin-top:2px;">
+        <div class="stats-total">Gesamt über alle Hallen dieser Messe · <b>${totals.total}</b> Aussteller</div>
+        <div class="progress-line"><span class="progress-label">Ausgeteilt</span><span class="progress-track"><span class="progress-fill out" style="width:${pct(totals.out)}%;"></span></span><span class="progress-num">${totals.out}/${totals.total}</span></div>
+        <div class="progress-line"><span class="progress-label">Eingesammelt</span><span class="progress-track"><span class="progress-fill in" style="width:${pct(totals.inn)}%;"></span></span><span class="progress-num">${totals.inn}/${totals.total}</span></div>
+      </div>`;
+    } else {
+      summaryEl.innerHTML='';
+    }
+
+    listEl.innerHTML = adminHallen.map(h=>{
+      const stats = adminHallenStats[h.id] || {total:0,out:0,inn:0};
+      return `<div class="hall-card" data-id="${esc(h.id)}" style="cursor:default;">
+        <div class="hall-card-top">
+          <span class="hall-name">${esc(h.name)}</span>
+          <span class="hall-date">${esc(fmtDate(h.createdAt))}</span>
+        </div>
+        ${h.interviewer?`<div class="hall-interviewer">${esc(h.interviewer)}</div>`:''}
+        <div class="hall-progress-row">
+          <span><span class="dot dot-out"></span>${stats.out}/${stats.total} ausgeteilt</span>
+          <span><span class="dot dot-in"></span>${stats.inn}/${stats.total} eingesammelt</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; margin-top:10px;">
+          <button class="chip ${h.active?'active':''}" data-action="toggle-active">${h.active?ICON.check+' Läuft':'Pausiert'}</button>
+          <button class="btn btn-sm" data-action="open-halle" style="margin-left:auto;">Öffnen</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    listEl.querySelectorAll('[data-action="toggle-active"]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        const id = btn.closest('.hall-card').dataset.id;
+        const h = adminHallen.find(x=>x.id===id);
+        if(!h) return;
+        btn.disabled = true;
+        try{ await store.setHalleActive(currentMesseId, id, !h.active); }
+        catch(err){ showBanner(`Fehler: ${esc(err && err.message || err)}`, true); }
+        btn.disabled=false;
+      };
+    });
+    listEl.querySelectorAll('[data-action="open-halle"]').forEach(btn=>{
+      btn.onclick = ()=>{
+        const id = btn.closest('.hall-card').dataset.id;
+        const h = adminHallen.find(x=>x.id===id);
+        if(h) openHalle(h, currentMesseId, 'admin');
+      };
+    });
+  }
+
+  /* ---------------- IMPORT ---------------- */
+  function startImport(messeId, messeName){
+    stopAll();
+    importState = { messeId, messeName, rawRows:null, headerRow:null, standIdx:-1, firmaIdx:-1, halleIdx:-1, nrIdx:-1, manualName:'', interviewer:'', file:null };
+    view='import';
+    setTopbar(`
+      <button class="back-btn" id="back-btn">${ICON.back}</button>
+      <div>
+        <p class="kicker">${esc(messeName)}</p>
+        <h1 class="page-title">Excel importieren</h1>
+      </div>
+    `);
+    document.getElementById('back-btn').onclick = ()=> goAdminHallen(messeId, messeName);
+    renderImportStep1();
+  }
+
+  function renderImportStep1(){
+    app.innerHTML = `
+      <div class="card">
+        <label class="dropzone" id="dropzone">
+          <input type="file" id="file-input" accept=".xlsx,.xls,.csv">
+          <strong>Excel-Datei auswählen</strong><br>
+          Ausstellerliste dieser Halle (.xlsx, .xls oder .csv)
+        </label>
+        <p class="hint">Die Datei sollte je Aussteller eine Zeile mit Standnummer und Firmenname enthalten.</p>
+      </div>
+    `;
+    document.getElementById('file-input').onchange = handleFile;
+  }
+
+  async function handleFile(ev){
+    const file = ev.target.files[0];
+    if(!file) return;
+    importState.file = file;
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, {type:'array'});
+    const sheetName = wb.SheetNames[0];
+    const sheet = wb.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(sheet, {header:1, raw:false, defval:''});
+    const nonEmpty = rows.filter(r=> r.some(c=> String(c).trim()!==''));
+    if(nonEmpty.length < 2){
+      showBanner('Die Datei enthält keine verwertbaren Zeilen.', true);
+      return;
+    }
+    let headerRowIndex = 0;
+    while(nonEmpty[headerRowIndex].filter(c=>String(c).trim()!=='').length < 2 && headerRowIndex < nonEmpty.length-1){
+      headerRowIndex++;
+    }
+    const header = nonEmpty[headerRowIndex].map(h=>String(h));
+    const dataRows = nonEmpty.slice(headerRowIndex+1);
+    importState.headerRow = header;
+    importState.dataRows = dataRows;
+    importState.multiSheetNote = wb.SheetNames.length>1 ? sheetName : null;
+
+    const norm = s=>s.toLowerCase().trim();
+    let standIdx=-1, firmaIdx=-1, halleIdx=-1, nrIdx=-1;
+    header.forEach((h,i)=>{
+      const n = norm(h);
+      const compact = n.replace(/\./g,'').replace(/\s+/g,'');
+      if(standIdx===-1 && /stand/.test(n)) standIdx=i;
+      if(halleIdx===-1 && /halle/.test(n)) halleIdx=i;
+      if(nrIdx===-1 && /^(no|nr|lfdnr|laufendenr|nummer|#)$/.test(compact)) nrIdx=i;
+    });
+    header.forEach((h,i)=>{
+      const n = norm(h);
+      if(firmaIdx===-1 && i!==standIdx && i!==halleIdx && i!==nrIdx && /(firma|aussteller|unternehmen|name|company)/.test(n)) firmaIdx=i;
+    });
+    importState.standIdx = standIdx;
+    importState.firmaIdx = firmaIdx;
+    importState.halleIdx = halleIdx;
+    importState.nrIdx = nrIdx;
+
+    if(halleIdx>-1){
+      const vals = Array.from(new Set(dataRows.map(r=> String(r[halleIdx]||'').trim()).filter(Boolean)));
+      importState.halleValues = vals;
+    } else {
+      importState.halleValues = [];
+    }
+    renderImportStep2();
+  }
+
+  function defaultHalleName(){
+    const v = (importState.halleValues[0]||'').trim();
+    if(!v) return '';
+    return /halle/i.test(v) ? v : ('Halle ' + v);
+  }
+
+  function renderImportStep2(){
+    const { headerRow, standIdx, firmaIdx, halleIdx, nrIdx, dataRows, halleValues, multiSheetNote, messeName } = importState;
+    const options = (selected)=> headerRow.map((h,i)=>
+      `<option value="${i}" ${i===selected?'selected':''}>${esc(h)}</option>`).join('');
+    const multiHalle = halleValues.length>1;
+
+    app.innerHTML = `
+      ${multiSheetNote?`<div class="banner">Es wird das erste Tabellenblatt „${esc(multiSheetNote)}“ verwendet.</div>`:''}
+      <div class="card">
+        <p class="hint" style="margin-top:0;">Für die Messe „${esc(messeName)}“</p>
+        <div class="field">
+          <label class="field-label">Spalte: Standnummer</label>
+          <select id="sel-stand"><option value="-1">— auswählen —</option>${options(standIdx)}</select>
+        </div>
+        <div class="field">
+          <label class="field-label">Spalte: Firmenname</label>
+          <select id="sel-firma"><option value="-1">— auswählen —</option>${options(firmaIdx)}</select>
+        </div>
+        <div class="field">
+          <label class="field-label">Spalte: Lfd. Nr. (optional)</label>
+          <select id="sel-nr"><option value="-1">— keine —</option>${options(nrIdx)}</select>
+        </div>
+        <div class="field">
+          <label class="field-label">Spalte: Halle (optional)</label>
+          <select id="sel-halle"><option value="-1">— keine —</option>${options(halleIdx)}</select>
+          ${multiHalle?`<p class="hint">Mehrere Hallen gefunden: ${halleValues.map(esc).join(', ')}. Es werden automatisch getrennte Listen angelegt.</p>`
+            : `<div id="manual-name-wrap" class="field" style="margin-top:10px;">
+                 <label class="field-label">Bezeichnung dieser Halle</label>
+                 <input type="text" id="manual-name" placeholder="z. B. Halle 3.1" value="${esc(defaultHalleName())}">
+               </div>`}
+        </div>
+        <div class="field">
+          <label class="field-label">Interviewer(in) (optional)</label>
+          <input type="text" id="interviewer-name" placeholder="z. B. Frau Meier${multiHalle?' — gilt für alle Hallen dieser Datei':''}" value="${esc(importState.interviewer||'')}">
+          <p class="hint">Bei mehreren Personen in dieser Halle einfach alle Namen eintragen.</p>
+        </div>
+        <div id="preview-wrap"></div>
+        <p class="hint" id="row-count">${dataRows.length} Zeilen erkannt.</p>
+      </div>
+      <div class="toolbar">
+        <button class="btn" id="cancel-import" style="flex:1;">Abbrechen</button>
+        <button class="btn btn-primary" id="confirm-import" style="flex:2;">${ICON.plus} Liste anlegen</button>
+      </div>
+    `;
+    document.getElementById('cancel-import').onclick = ()=> goAdminHallen(importState.messeId, importState.messeName);
+    document.getElementById('sel-stand').onchange = e=>{ importState.standIdx=+e.target.value; refreshPreview(); };
+    document.getElementById('sel-firma').onchange = e=>{ importState.firmaIdx=+e.target.value; refreshPreview(); };
+    document.getElementById('sel-nr').onchange = e=>{ importState.nrIdx=+e.target.value; refreshPreview(); };
+    document.getElementById('sel-halle').onchange = e=>{
+      importState.halleIdx=+e.target.value;
+      const vals = importState.halleIdx>-1
+        ? Array.from(new Set(dataRows.map(r=>String(r[importState.halleIdx]||'').trim()).filter(Boolean)))
+        : [];
+      importState.halleValues = vals;
+      renderImportStep2();
+    };
+    document.getElementById('confirm-import').onclick = confirmImport;
+    const manualInputEl = document.getElementById('manual-name');
+    if(manualInputEl) manualInputEl.oninput = refreshPreview;
+    document.getElementById('interviewer-name').oninput = e=>{ importState.interviewer = e.target.value; };
+    refreshPreview();
+  }
+
+  function refreshPreview(){
+    const { standIdx, firmaIdx, nrIdx, dataRows } = importState;
+    const wrap = document.getElementById('preview-wrap');
+    const confirmBtn = document.getElementById('confirm-import');
+    const manualInput = document.getElementById('manual-name');
+    const multiHalle = importState.halleValues.length>1;
+    const nameOk = multiHalle || (manualInput ? manualInput.value.trim()!=='' : true);
+    if(confirmBtn) confirmBtn.disabled = !(standIdx>-1 && firmaIdx>-1 && nameOk);
+    if(!wrap) return;
+    if(standIdx===-1 || firmaIdx===-1){
+      wrap.innerHTML = `<p class="hint warn">Bitte Spalten für Standnummer und Firmenname wählen.</p>`;
+      return;
+    }
+    const rows = dataRows.slice(0,5);
+    wrap.innerHTML = `<table class="preview"><thead><tr>${nrIdx>-1?'<th>Nr.</th>':''}<th>Stand</th><th>Firma</th></tr></thead><tbody>
+      ${rows.map(r=>`<tr>${nrIdx>-1?`<td class="stand-cell">${esc(r[nrIdx]||'—')}</td>`:''}<td class="stand-cell">${esc(r[standIdx]||'—')}</td><td>${esc(r[firmaIdx]||'—')}</td></tr>`).join('')}
+    </tbody></table>`;
+  }
+
+  async function confirmImport(){
+    const { messeId, messeName, standIdx, firmaIdx, halleIdx, nrIdx, dataRows, halleValues, interviewer } = importState;
+    if(standIdx===-1 || firmaIdx===-1) return;
+    const btn = document.getElementById('confirm-import');
+    btn.disabled = true; btn.textContent = 'Wird angelegt…';
+
+    const clean = r => ({
+      stand: String(r[standIdx]||'').trim(),
+      firma: String(r[firmaIdx]||'').trim(),
+      nr: nrIdx>-1 ? String(r[nrIdx]||'').trim() : ''
+    });
+
+    try{
+      if(halleValues.length>1){
+        const groups = {};
+        dataRows.forEach(r=>{
+          const raw = String(r[halleIdx]||'').trim();
+          const key = raw ? (/halle/i.test(raw) ? raw : ('Halle '+raw)) : 'Ohne Zuordnung';
+          groups[key] = groups[key]||[];
+          groups[key].push(r);
+        });
+        for(const [name, rows] of Object.entries(groups)){
+          const mapped = rows.map((r,i)=>({...clean(r), order:i})).filter(r=>r.stand||r.firma);
+          if(!mapped.length) continue;
+          await store.createHalle(messeId, name, mapped, interviewer);
+        }
+        goAdminHallen(messeId, messeName);
+      } else {
+        const name = document.getElementById('manual-name') ? document.getElementById('manual-name').value.trim() : (halleValues[0]||'Halle');
+        const mapped = dataRows.map((r,i)=>({...clean(r), order:i})).filter(r=>r.stand||r.firma);
+        const finalName = name || 'Halle';
+        const id = await store.createHalle(messeId, finalName, mapped, interviewer);
+        openHalle({ id, name: finalName, interviewer }, messeId, 'admin');
+      }
+    }catch(err){
+      btn.disabled=false; btn.textContent='Liste anlegen';
+      showBanner(`Fehler beim Anlegen: ${esc(err && err.message || err)}`, true);
+    }
+  }
+
+  /* ---------------- HALL VIEW ---------------- */
+  function openHalle(hall, messeId, origin){
+    stopAll();
+    currentHall = { messeId, id: hall.id, name: hall.name, interviewer: hall.interviewer||'' };
+    hallOrigin = origin;
+    hallRows = [];
+    search=''; filterMode='all'; confirmingDelete=false; editingCommentId=null; commentDraft='';
+    editingInterviewer=false; interviewerDraft='';
+    view='hall';
+    setTopbar(`
+      <button class="back-btn" id="back-btn">${ICON.back}</button>
+      <div>
+        <p class="kicker">Wissler &amp; Partner</p>
+        <h1 class="page-title">${esc(currentHall.name)}</h1>
+      </div>
+    `);
+    document.getElementById('back-btn').onclick = ()=> hallOrigin==='admin' ? goAdminHallen(currentHall.messeId, currentMesseName) : goHome();
+    renderHallShell();
+    hallUnsub = store.subscribeAussteller(currentHall.messeId, currentHall.id, rows=>{
+      hallRows = rows;
+      renderHallStats();
+      renderHallList();
+    });
+  }
+
+  function renderHallShell(){
+    app.innerHTML = `
+      <div class="hall-interviewer-bar" id="hall-interviewer-bar"></div>
+      <div class="stats-bar" id="stats-bar"></div>
+      <div class="search-row">
+        <input type="text" class="search-input" id="search-input" placeholder="Stand oder Firma suchen…">
+      </div>
+      <div class="chips" id="chips">
+        <span class="chip active" data-mode="all">Alle</span>
+        <span class="chip" data-mode="open">Offen</span>
+        <span class="chip" data-mode="out">Ausgeteilt</span>
+        <span class="chip" data-mode="done">Abgeschlossen</span>
+      </div>
+      <div class="list" id="list">${loadingRow()}</div>
+      <div class="toolbar" id="toolbar"></div>
+    `;
+    document.getElementById('search-input').oninput = e=>{ search=e.target.value.toLowerCase(); renderHallList(); };
+    document.getElementById('chips').onclick = e=>{
+      const chip = e.target.closest('.chip'); if(!chip) return;
+      filterMode = chip.dataset.mode;
+      document.querySelectorAll('#chips .chip').forEach(c=>c.classList.toggle('active', c===chip));
+      renderHallList();
+    };
+    renderHallInterviewerBar();
+    renderToolbar();
+  }
+
+  function renderHallInterviewerBar(){
+    const el = document.getElementById('hall-interviewer-bar');
+    if(!el) return;
+    if(editingInterviewer){
+      el.innerHTML = `<div class="interviewer-editor">
+        <input type="text" id="interviewer-input" placeholder="Name(n) der Interviewer:in(nen)">
+        <div class="interviewer-editor-actions">
+          <button class="btn btn-sm" id="cancel-interviewer" style="flex:1;">Abbrechen</button>
+          <button class="btn btn-sm btn-primary" id="save-interviewer" style="flex:1;">Speichern</button>
+        </div>
+      </div>`;
+      const inp = document.getElementById('interviewer-input');
+      inp.value = interviewerDraft;
+      inp.focus();
+      const len = inp.value.length; inp.setSelectionRange(len,len);
+      document.getElementById('cancel-interviewer').onclick = ()=>{ editingInterviewer=false; renderHallInterviewerBar(); };
+      document.getElementById('save-interviewer').onclick = async ()=>{
+        const text = document.getElementById('interviewer-input').value.trim();
+        editingInterviewer = false;
+        currentHall.interviewer = text;
+        renderHallInterviewerBar();
+        try{
+          await store.updateHalleInterviewer(currentHall.messeId, currentHall.id, text);
+        }catch(err){
+          showBanner(`Fehler beim Speichern: ${esc(err && err.message || err)}`, true);
+        }
+      };
+    } else if(currentHall.interviewer){
+      el.innerHTML = `<div class="interviewer-row">
+        <span class="interviewer-label">${ICON.user} ${esc(currentHall.interviewer)}</span>
+        <button class="comment-toggle-btn" id="edit-interviewer">Bearbeiten</button>
+      </div>`;
+      document.getElementById('edit-interviewer').onclick = ()=>{ editingInterviewer=true; interviewerDraft=currentHall.interviewer||''; renderHallInterviewerBar(); };
+    } else {
+      el.innerHTML = `<button class="comment-toggle-btn" id="edit-interviewer">${ICON.user} Interviewer(in) hinzufügen</button>`;
+      document.getElementById('edit-interviewer').onclick = ()=>{ editingInterviewer=true; interviewerDraft=''; renderHallInterviewerBar(); };
+    }
+  }
+
+  function renderToolbar(){
+    const toolbar = document.getElementById('toolbar');
+    if(!toolbar) return;
+    if(confirmingDelete){
+      toolbar.innerHTML = `
+        <button class="btn" id="cancel-delete" style="flex:1;">Abbrechen</button>
+        <button class="btn btn-danger" id="really-delete" style="flex:1;">${ICON.trash} Endgültig löschen</button>
+      `;
+      document.getElementById('cancel-delete').onclick = ()=>{ confirmingDelete=false; renderToolbar(); };
+      document.getElementById('really-delete').onclick = async ()=>{
+        const btn = document.getElementById('really-delete');
+        btn.disabled = true; btn.textContent = 'Wird gelöscht…';
+        try{
+          await deleteHalle();
+        }catch(err){
+          confirmingDelete = false;
+          renderToolbar();
+          showBanner(`Fehler beim Löschen: ${esc(err && err.message || err)}`, true);
+        }
+      };
+    } else {
+      toolbar.innerHTML = `
+        <button class="btn" id="export-btn" style="flex:1;">${ICON.download} Export</button>
+        <button class="btn btn-danger" id="delete-btn" style="flex:1;">${ICON.trash} Löschen</button>
+      `;
+      document.getElementById('export-btn').onclick = exportHalle;
+      document.getElementById('delete-btn').onclick = ()=>{ confirmingDelete=true; renderToolbar(); };
+    }
+  }
+
+  function renderHallStats(){
+    const total = hallRows.length;
+    const out = hallRows.filter(r=>r.out).length;
+    const inn = hallRows.filter(r=>r.in).length;
+    const pct = n => total? Math.round(n/total*100) : 0;
+    document.getElementById('stats-bar').innerHTML = `
+      <div class="stats-total"><b>${total}</b> Aussteller insgesamt</div>
+      <div class="progress-line">
+        <span class="progress-label">Ausgeteilt</span>
+        <span class="progress-track"><span class="progress-fill out" style="width:${pct(out)}%;"></span></span>
+        <span class="progress-num">${out}/${total}</span>
+      </div>
+      <div class="progress-line">
+        <span class="progress-label">Eingesammelt</span>
+        <span class="progress-track"><span class="progress-fill in" style="width:${pct(inn)}%;"></span></span>
+        <span class="progress-num">${inn}/${total}</span>
+      </div>
+    `;
+  }
+
+  function renderHallList(){
+    const listEl = document.getElementById('list');
+    if(!listEl) return;
+    let rows = hallRows;
+    if(search){
+      rows = rows.filter(r=> (r.stand||'').toLowerCase().includes(search) || (r.firma||'').toLowerCase().includes(search) || (r.nr||'').toLowerCase().includes(search) || (r.kommentar||'').toLowerCase().includes(search));
+    }
+    if(filterMode==='open') rows = rows.filter(r=>!r.out && !r.in);
+    else if(filterMode==='out') rows = rows.filter(r=>r.out && !r.in);
+    else if(filterMode==='done') rows = rows.filter(r=>r.out && r.in);
+
+    if(!rows.length){
+      listEl.innerHTML = `<div class="empty">${ICON.empty}<div>Keine Aussteller gefunden.</div></div>`;
+      return;
+    }
+    listEl.innerHTML = rows.map(r=>{
+      const outTime = fmtTime(r.outAt);
+      const inTime = fmtTime(r.inAt);
+      let meta = '';
+      if(outTime || inTime){
+        meta = `<div class="row-meta">${outTime?`Ausgeteilt ${outTime}`:''}${outTime&&inTime?' · ':''}${inTime?`Eingesammelt ${inTime}`:''}</div>`;
+      }
+      let commentBlock;
+      if(editingCommentId === r.id){
+        commentBlock = `<div class="comment-editor">
+          <textarea id="comment-textarea" placeholder="Notiz zu diesem Aussteller…">${esc(commentDraft)}</textarea>
+          <div class="comment-editor-actions">
+            <button class="btn btn-sm" data-action="cancel-comment" style="flex:1;">Abbrechen</button>
+            <button class="btn btn-sm btn-primary" data-action="save-comment" style="flex:1;">Speichern</button>
+          </div>
+        </div>`;
+      } else if(r.kommentar){
+        commentBlock = `<div class="row-comment">
+          <span class="row-comment-text">${esc(r.kommentar)}</span>
+          <button class="comment-toggle-btn" data-action="edit-comment">Bearbeiten</button>
+        </div>`;
+      } else {
+        commentBlock = `<button class="comment-toggle-btn" data-action="edit-comment">${ICON.comment} Notiz</button>`;
+      }
+      return `<div class="row" data-id="${esc(r.id)}">
+        <div class="row-top">
+          ${r.nr?`<span class="row-nr">${esc(r.nr)}</span>`:''}
+          <span class="row-stand">${esc(r.stand||'—')}</span>
+          <span class="row-firma">${esc(r.firma||'—')}</span>
+        </div>
+        <div class="row-actions">
+          <button class="toggle-btn ${r.out?'on-out':''}" data-field="out">${r.out?ICON.check:ICON.out} Ausgeteilt</button>
+          <button class="toggle-btn ${r.in?'on-in':''}" data-field="in">${r.in?ICON.check:ICON.inn} Eingesammelt</button>
+        </div>
+        ${meta}
+        ${commentBlock}
+      </div>`;
+    }).join('');
+
+    listEl.querySelectorAll('.toggle-btn').forEach(btn=>{
+      btn.onclick = ()=>{
+        const rowEl = btn.closest('.row');
+        const id = rowEl.dataset.id;
+        const field = btn.dataset.field;
+        const row = hallRows.find(r=>r.id===id);
+        if(!row) return;
+        store.toggle(currentHall.messeId, currentHall.id, id, field, row[field]);
+      };
+    });
+
+    listEl.querySelectorAll('[data-action="edit-comment"]').forEach(btn=>{
+      btn.onclick = ()=>{
+        const id = btn.closest('.row').dataset.id;
+        const row = hallRows.find(r=>r.id===id);
+        editingCommentId = id;
+        commentDraft = (row && row.kommentar) || '';
+        renderHallList();
+        const ta = document.getElementById('comment-textarea');
+        if(ta){ ta.focus(); const len=ta.value.length; ta.setSelectionRange(len,len); }
+      };
+    });
+    listEl.querySelectorAll('[data-action="cancel-comment"]').forEach(btn=>{
+      btn.onclick = ()=>{
+        editingCommentId = null; commentDraft = '';
+        renderHallList();
+      };
+    });
+    listEl.querySelectorAll('[data-action="save-comment"]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        const id = btn.closest('.row').dataset.id;
+        const text = commentDraft.trim();
+        editingCommentId = null;
+        await store.updateComment(currentHall.messeId, currentHall.id, id, text);
+        renderHallList();
+      };
+    });
+    const commentTextarea = listEl.querySelector('#comment-textarea');
+    if(commentTextarea){
+      commentTextarea.oninput = e=>{ commentDraft = e.target.value; };
+    }
+  }
+
+  async function exportHalle(){
+    const hasNr = hallRows.some(r=>r.nr);
+    const rows = hallRows.map(r=>({
+      ...(hasNr ? {'Nr.': r.nr||''} : {}),
+      'Stand': r.stand||'',
+      'Firma': r.firma||'',
+      'Ausgeteilt': r.out?'Ja':'Nein',
+      'Ausgeteilt um': fmtTime(r.outAt)||'',
+      'Eingesammelt': r.in?'Ja':'Nein',
+      'Eingesammelt um': fmtTime(r.inAt)||'',
+      'Kommentar': r.kommentar||''
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = hasNr
+      ? [{wch:6},{wch:10},{wch:32},{wch:11},{wch:13},{wch:13},{wch:15},{wch:30}]
+      : [{wch:10},{wch:32},{wch:11},{wch:13},{wch:13},{wch:15},{wch:30}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Aussteller');
+    const buf = XLSX.write(wb, {type:'array', bookType:'xlsx'});
+    const filename = `Ausstellerbefragung_${(currentHall.name||'Halle').replace(/[^\w.-]+/g,'_')}.xlsx`;
+    const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+
+    // If this page happens to be opened inside a Claude artifact viewer
+    // (e.g. for a quick test), a plain browser download is blocked there —
+    // use the platform's own save prompt instead when it's available.
+    if(typeof claude !== 'undefined' && claude.use){
+      try{
+        const downloads = await claude.use('downloads');
+        if(downloads){
+          await downloads.save({ filename, data: blob });
+          return;
+        }
+      }catch(e){ /* fall through to a plain browser download below */ }
+    }
+
+    try{
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 2000);
+    }catch(e){
+      showBanner('Export hat nicht funktioniert.', true);
+    }
+  }
+
+  async function deleteHalle(){
+    await store.deleteHalle(currentHall.messeId, currentHall.id);
+    if(hallOrigin==='admin') goAdminHallen(currentHall.messeId, currentMesseName);
+    else goHome();
+  }
+
+  /* ---------------- init ---------------- */
+  (async function init(){
+    try{ isAdmin = sessionStorage.getItem('ausstellerbefragung_admin') === '1'; }catch(e){ isAdmin = false; }
+    usingFirebase = await tryInitFirebase();
+    renderHome();
+    if(!usingFirebase){
+      showBanner('Keine Verbindung zur zentralen Datenbank – Änderungen werden nur lokal auf diesem Gerät gespeichert und nicht mit anderen Geräten geteilt.', true);
+    }
+  })();
+
+})();
+</script>
