@@ -494,6 +494,13 @@
         h.active = active;
         writeAll(data); notifyHallen(messeId);
       },
+      async setAllHallenActive(messeId, active){
+        const data = readAll();
+        const m = data.messen[messeId];
+        if(!m) return;
+        Object.values(m.hallen||{}).forEach(h=>{ h.active = active; });
+        writeAll(data); notifyHallen(messeId);
+      },
       async deleteHalle(messeId, hallId){
         const data = readAll();
         if(data.messen[messeId]) delete data.messen[messeId].hallen[hallId];
@@ -619,6 +626,12 @@
       },
       async setHalleActive(messeId, hallId, active){
         await hallenCol(messeId).doc(hallId).update({active});
+      },
+      async setAllHallenActive(messeId, active){
+        const snap = await hallenCol(messeId).limit(500).get();
+        const batch = db.batch();
+        snap.docs.forEach(d=>{ batch.update(d.ref, {active}); });
+        await batch.commit();
       },
       async deleteHalle(messeId, hallId){
         await cascadeDeleteHalle(messeId, hallId);
@@ -1054,7 +1067,25 @@
         <div class="stats-total">Gesamt über alle Hallen dieser Messe · <b>${totals.total}</b> Aussteller</div>
         <div class="progress-line"><span class="progress-label">Ausgeteilt</span><span class="progress-track"><span class="progress-fill out" style="width:${pct(totals.out)}%;"></span></span><span class="progress-num">${totals.out}/${totals.total}</span></div>
         <div class="progress-line"><span class="progress-label">Eingesammelt</span><span class="progress-track"><span class="progress-fill in" style="width:${pct(totals.inn)}%;"></span></span><span class="progress-num">${totals.inn}/${totals.total}</span></div>
+        <div style="display:flex; gap:8px; margin-top:12px;">
+          <button class="btn btn-sm" id="activate-all-hallen" style="flex:1;">${ICON.check} Alle aktivieren</button>
+          <button class="btn btn-sm" id="pause-all-hallen" style="flex:1;">Alle pausieren</button>
+        </div>
       </div>`;
+      const activateAllBtn = document.getElementById('activate-all-hallen');
+      const pauseAllBtn = document.getElementById('pause-all-hallen');
+      if(activateAllBtn) activateAllBtn.onclick = async ()=>{
+        activateAllBtn.disabled = true; pauseAllBtn.disabled = true;
+        try{ await store.setAllHallenActive(currentMesseId, true); }
+        catch(err){ showBanner(`Fehler: ${esc(err && err.message || err)}`, true); }
+        activateAllBtn.disabled = false; pauseAllBtn.disabled = false;
+      };
+      if(pauseAllBtn) pauseAllBtn.onclick = async ()=>{
+        activateAllBtn.disabled = true; pauseAllBtn.disabled = true;
+        try{ await store.setAllHallenActive(currentMesseId, false); }
+        catch(err){ showBanner(`Fehler: ${esc(err && err.message || err)}`, true); }
+        activateAllBtn.disabled = false; pauseAllBtn.disabled = false;
+      };
     } else {
       summaryEl.innerHTML='';
     }
