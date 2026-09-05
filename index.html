@@ -591,7 +591,11 @@
       },
       async deleteMesse(messeId){
         const hSnap = await hallenCol(messeId).limit(500).get();
-        for(const hd of hSnap.docs){ await cascadeDeleteHalle(messeId, hd.id); }
+        // Delete all halls of this Messe in parallel (each internally
+        // batches its own exhibitor deletes) instead of one hall after
+        // another — with many halls, sequential deletion added up to
+        // minutes even after batching each hall's rows.
+        await Promise.all(hSnap.docs.map(hd => cascadeDeleteHalle(messeId, hd.id)));
         await messenCol.doc(messeId).delete();
       },
       subscribeHallenForMesse(messeId, cb){
