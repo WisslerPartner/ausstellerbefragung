@@ -471,10 +471,11 @@
         if(data.messen[messeId]) data.messen[messeId].active = active;
         writeAll(data); notifyMessen();
       },
-      async deleteMesse(messeId){
+      async deleteMesse(messeId, onProgress){
         const data = readAll();
         delete data.messen[messeId];
         writeAll(data); notifyMessen();
+        if(onProgress) onProgress(1,1);
       },
       subscribeHallenForMesse(messeId, cb){
         hallenListeners[messeId] = hallenListeners[messeId]||[];
@@ -607,13 +608,20 @@
       async setMesseActive(messeId, active){
         await messenCol.doc(messeId).update({active});
       },
-      async deleteMesse(messeId){
+      async deleteMesse(messeId, onProgress){
         const hSnap = await hallenCol(messeId).limit(500).get();
         // Delete all halls of this Messe in parallel (each internally
         // batches its own exhibitor deletes) instead of one hall after
         // another — with many halls, sequential deletion added up to
         // minutes even after batching each hall's rows.
-        await Promise.all(hSnap.docs.map(hd => cascadeDeleteHalle(messeId, hd.id)));
+        const total = hSnap.docs.length;
+        let done = 0;
+        if(onProgress) onProgress(done, total);
+        await Promise.all(hSnap.docs.map(hd => cascadeDeleteHalle(messeId, hd.id).then(r=>{
+          done++;
+          if(onProgress) onProgress(done, total);
+          return r;
+        })));
         await messenCol.doc(messeId).delete();
       },
       subscribeHallenForMesse(messeId, cb){
@@ -1105,7 +1113,14 @@
         const id = confirmDeleteMesseId;
         btn.disabled = true; btn.textContent = 'Wird gelöscht…';
         try{
-          await withTimeout(store.deleteMesse(id), 30000, 'Messe löschen');
+          // A Messe can have 30+ Hallen with thousands of exhibitors in
+          // total (real-world scale seen in testing) — a short timeout
+          // here was firing on genuinely-still-working deletes, not stuck
+          // ones, so this is deliberately generous. The progress callback
+          // keeps the button honest while it works through them.
+          await withTimeout(store.deleteMesse(id, (done,total)=>{
+            btn.textContent = total ? `Wird gelöscht… (${done}/${total} Hallen)` : 'Wird gelöscht…';
+          }), 120000, 'Messe löschen');
           confirmDeleteMesseId=null;
           // Don't wait for the live subscription to notice the deletion —
           // it can take a while to re-fire (e.g. after the browser tab was
@@ -1189,7 +1204,7 @@
       if(activateAllBtn) activateAllBtn.onclick = async ()=>{
         activateAllBtn.disabled = true; pauseAllBtn.disabled = true;
         try{
-          await withTimeout(store.setAllHallenActive(currentMesseId, true), 20000, 'Alle aktivieren');
+          await withTimeout(store.setAllHallenActive(currentMesseId, true), 45000, 'Alle aktivieren');
           // Reflect it immediately instead of waiting for the live list to
           // notice — same reasoning as the delete fixes above.
           adminHallen = adminHallen.map(h=>({...h, active:true}));
@@ -1199,7 +1214,7 @@
       if(pauseAllBtn) pauseAllBtn.onclick = async ()=>{
         activateAllBtn.disabled = true; pauseAllBtn.disabled = true;
         try{
-          await withTimeout(store.setAllHallenActive(currentMesseId, false), 20000, 'Alle pausieren');
+          await withTimeout(store.setAllHallenActive(currentMesseId, false), 45000, 'Alle pausieren');
           adminHallen = adminHallen.map(h=>({...h, active:false}));
           renderAdminHallenList();
         }catch(err){ showBanner(`Fehler: ${esc(err && err.message || err)}`, true); renderAdminHallenList(); }
@@ -1269,7 +1284,7 @@
         const id = confirmDeleteHallId;
         btn.disabled = true; btn.textContent = 'Wird gelöscht…';
         try{
-          await withTimeout(store.deleteHalle(currentMesseId, id), 30000, 'Halle löschen');
+          await withTimeout(store.deleteHalle(currentMesseId, id), 60000, 'Halle löschen');
           confirmDeleteHallId=null;
           // Same reasoning as the Messe delete above: reflect the completed
           // delete immediately rather than waiting on the live subscription.
@@ -1479,12 +1494,26 @@
         // another — with many halls in one spreadsheet, sequential
         // creation added up to minutes even though each hall's own rows
         // were already batched.
-        const jobs = Object.entries(groups).map(([name, rows])=>{
-          const mapped = rows.map((r,i)=>({...clean(r), order:i})).filter(r=>r.stand||r.firma);
-          if(!mapped.length) return null;
-          return store.createHalle(messeId, name, mapped, interviewer);
-        }).filter(Boolean);
-        await withTimeout(Promise.all(jobs), 45000, 'Import');
+        const entries = Object.entries(groups)
+          .map(([name, rows])=>({ name, mapped: rows.map((r,i)=>({...clean(r), order:i})).filter(r=>r.stand||r.firma) }))
+          .filter(e=>e.mapped.length);
+        const total = entries.length;
+        let done = 0;
+        btn.textContent = `Wird angelegt… (0/${total} Hallen)`;
+        const jobs = entries.map(e=>
+          store.createHalle(messeId, e.name, e.mapped, interviewer).then(r=>{
+            done++;
+            btn.textContent = `Wird angelegt… (${done}/${total} Hallen)`;
+            return r;
+          })
+        );
+        // A real import at this scale (dozens of Hallen, thousands of
+        // rows) genuinely takes longer than a fixed short timeout allows,
+        // especially over a slow connection — scale the ceiling with the
+        // number of Hallen instead of guessing one constant for every
+        // import size.
+        const timeoutMs = Math.max(45000, total*4000 + 20000);
+        await withTimeout(Promise.all(jobs), timeoutMs, 'Import');
         goAdminHallen(messeId, messeName);
       } else {
         const name = document.getElementById('manual-name') ? document.getElementById('manual-name').value.trim() : (halleValues[0]||'Halle');
