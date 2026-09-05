@@ -1427,11 +1427,17 @@
           groups[key] = groups[key]||[];
           groups[key].push(r);
         });
-        for(const [name, rows] of Object.entries(groups)){
+        // Create all halls of this import in parallel (each internally
+        // batches its own exhibitor rows) instead of one hall after
+        // another — with many halls in one spreadsheet, sequential
+        // creation added up to minutes even though each hall's own rows
+        // were already batched.
+        const jobs = Object.entries(groups).map(([name, rows])=>{
           const mapped = rows.map((r,i)=>({...clean(r), order:i})).filter(r=>r.stand||r.firma);
-          if(!mapped.length) continue;
-          await store.createHalle(messeId, name, mapped, interviewer);
-        }
+          if(!mapped.length) return null;
+          return store.createHalle(messeId, name, mapped, interviewer);
+        }).filter(Boolean);
+        await Promise.all(jobs);
         goAdminHallen(messeId, messeName);
       } else {
         const name = document.getElementById('manual-name') ? document.getElementById('manual-name').value.trim() : (halleValues[0]||'Halle');
