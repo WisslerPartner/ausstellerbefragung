@@ -884,8 +884,10 @@
 
     // Mehrere Messen können gleichzeitig aktiv sein (z. B. parallele
     // Befragungen an unterschiedlichen Orten). Ist nur eine aktiv, wird sie
-    // automatisch verwendet; bei mehreren wählt das Gerät eine aus und
-    // merkt sich die Wahl (localStorage), bis die Messe deaktiviert wird.
+    // automatisch verwendet; bei mehreren zeigt die App bei JEDEM Öffnen
+    // erst die Messe-Auswahl (bewusst nicht über Reloads hinweg gemerkt —
+    // siehe init()), danach deren Hallen. Innerhalb eines offenen Tabs
+    // bleibt die Wahl erhalten, solange man nicht neu lädt.
     homeMesseUnsub = store.subscribeActiveMessen(list=>{
       homeActiveMessen = list;
       if(!list.length){
@@ -908,8 +910,7 @@
 
   function selectHomeMesse(messe){
     homeActiveMesse = messe;
-    homeSelectedMesseId = messe.id;
-    try{ localStorage.setItem('ausstellerbefragung_home_messe', messe.id); }catch(e){}
+    homeSelectedMesseId = messe.id; // in-memory only — see init(), not persisted across reloads
     stopHomeHallen();
     homeHallenUnsub = store.subscribeActiveHallenForMesse(messe.id, list=>{
       homeHallen = list;
@@ -956,7 +957,6 @@
     const btn = document.getElementById('switch-messe');
     if(btn) btn.onclick = ()=>{
       homeSelectedMesseId = null;
-      try{ localStorage.removeItem('ausstellerbefragung_home_messe'); }catch(e){}
       stopHomeHallen();
       renderHomeMessePicker();
     };
@@ -1962,7 +1962,13 @@
 
   (async function init(){
     try{ isAdmin = sessionStorage.getItem('ausstellerbefragung_admin') === '1'; }catch(e){ isAdmin = false; }
-    try{ homeSelectedMesseId = localStorage.getItem('ausstellerbefragung_home_messe') || null; }catch(e){ homeSelectedMesseId = null; }
+    // Deliberately NOT restored from localStorage: every fresh page open
+    // (reload, new tab) should show the Messe picker first when several
+    // Messen are active, rather than jumping straight back into whichever
+    // one was picked last time. homeSelectedMesseId still keeps the choice
+    // in memory for the rest of this page session, so navigating back and
+    // forth within one open tab doesn't re-ask each time.
+    homeSelectedMesseId = null;
     usingFirebase = await tryInitFirebase();
     const handledDirectLink = await tryOpenDirectHalleLink();
     if(!handledDirectLink) renderHome();
