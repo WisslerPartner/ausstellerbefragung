@@ -789,7 +789,7 @@
   let currentMesseId = null;
   let currentMesseName = '';
   let currentHall = null; // {messeId, id, name, interviewer}
-  let hallOrigin = 'home'; // 'home' | 'admin'
+  let hallOrigin = 'home'; // 'home' | 'admin' | 'direct' (opened via a per-Halle ?messe=&halle= link — no back button)
   let hallRows = [];
   let hallUnsub = null;
   let search = '';
@@ -1615,14 +1615,22 @@
     search=''; filterMode='all'; confirmingDelete=false; editingCommentId=null; commentDraft='';
     editingInterviewer=false; interviewerDraft='';
     view='hall';
+    // A Halle opened via a direct ?messe=&halle= link (origin 'direct') is
+    // meant to be the ONLY thing that phone ever sees — an interviewer
+    // assigned to one Halle must not be able to back out into the general
+    // Messe/Hallen home and browse (or edit) other Hallen. So that origin
+    // gets no back button at all; 'admin' and 'home' (reached through the
+    // normal in-app picker/Hallen list) keep theirs as before.
     setTopbar(`
-      <button class="back-btn" id="back-btn">${ICON.back}</button>
+      ${hallOrigin==='direct' ? '' : `<button class="back-btn" id="back-btn">${ICON.back}</button>`}
       <div>
         <p class="kicker">Wissler &amp; Partner</p>
         <h1 class="page-title">${esc(currentHall.name)}</h1>
       </div>
     `);
-    document.getElementById('back-btn').onclick = ()=> hallOrigin==='admin' ? goAdminHallen(currentHall.messeId, currentMesseName) : goHome();
+    if(hallOrigin!=='direct'){
+      document.getElementById('back-btn').onclick = ()=> hallOrigin==='admin' ? goAdminHallen(currentHall.messeId, currentMesseName) : goHome();
+    }
     renderHallShell();
     hallUnsub = store.subscribeAussteller(currentHall.messeId, currentHall.id, rows=>{
       hallRows = rows;
@@ -1643,6 +1651,8 @@
         <span class="chip" data-mode="open">Offen</span>
         <span class="chip" data-mode="out">Ausgeteilt</span>
         <span class="chip" data-mode="done">Abgeschlossen</span>
+        <span class="chip" data-mode="notiz-alle">Notiz alle</span>
+        <span class="chip" data-mode="notiz-offen">Notiz offen</span>
       </div>
       <div class="list" id="list">${loadingRow()}</div>
       <div class="toolbar" id="toolbar"></div>
@@ -1757,6 +1767,12 @@
     if(filterMode==='open') rows = rows.filter(r=>!r.out && !r.in);
     else if(filterMode==='out') rows = rows.filter(r=>r.out && !r.in);
     else if(filterMode==='done') rows = rows.filter(r=>r.out && r.in);
+    // "Notiz alle": jeder Aussteller mit einem Kommentar/einer Notiz, egal
+    // welcher Ausgeteilt/Eingesammelt-Status. "Notiz offen": nur die davon,
+    // die noch nicht eingesammelt wurden (ausgeteilt oder nicht spielt
+    // dabei keine Rolle — entscheidend ist nur "noch nicht eingesammelt").
+    else if(filterMode==='notiz-alle') rows = rows.filter(r=>r.kommentar);
+    else if(filterMode==='notiz-offen') rows = rows.filter(r=>!r.in && r.kommentar);
 
     if(!rows.length){
       listEl.innerHTML = `<div class="empty">${ICON.empty}<div>Keine Aussteller gefunden.</div></div>`;
@@ -1937,7 +1953,7 @@
         return true;
       }
       currentMesseId = messeId; currentMesseName = messe.name;
-      openHalle(halle, messeId, 'home');
+      openHalle(halle, messeId, 'direct');
       return true;
     }catch(e){
       return false;
