@@ -220,8 +220,13 @@
   .row:last-child{border-bottom:none;}
   .row-top{display:flex; align-items:baseline; gap:10px;}
   .row-nr{
-    font-family:var(--font-mono); font-weight:500; font-size:.85rem;
-    color:var(--ink-faint); flex:none; min-width:22px;
+    font-family:var(--font-mono); font-weight:700; font-size:1.15rem;
+    color:var(--danger); flex:none; min-width:22px;
+  }
+  .row-sprache{
+    font-family:var(--font-mono); font-weight:600; font-size:.78rem;
+    color:var(--ink-muted); flex:none; text-transform:uppercase;
+    border:1px solid var(--border); border-radius:4px; padding:1px 5px;
   }
   .row-stand{
     font-family:var(--font-mono); font-weight:600; font-size:.85rem;
@@ -395,6 +400,7 @@
     empty: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
     download: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>',
     trash: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2m-9 0l1 12a2 2 0 002 2h4a2 2 0 002-2l1-12"/></svg>',
+    link: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a5 5 0 007.07 0l2-2a5 5 0 00-7.07-7.07l-1 1"/><path d="M14 10a5 5 0 00-7.07 0l-2 2a5 5 0 007.07 7.07l1-1"/></svg>',
     search: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
     comment: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 01-8.75 8.37A8.5 8.5 0 013 12.13 8.38 8.38 0 0111.37 3.5 8.5 8.5 0 0121 11.5z"/></svg>',
     user: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c1.4-3.6 4.3-5.5 7.5-5.5s6.1 1.9 7.5 5.5"/></svg>',
@@ -522,7 +528,7 @@
         const aussteller = {};
         rows.forEach(r=>{
           const rid = uid();
-          aussteller[rid] = {id:rid, stand:r.stand, firma:r.firma, nr:r.nr||'', order:r.order, out:false, outAt:null, in:false, inAt:null, kommentar:''};
+          aussteller[rid] = {id:rid, stand:r.stand, firma:r.firma, nr:r.nr||'', sprache:r.sprache||'', order:r.order, out:false, outAt:null, in:false, inAt:null, kommentar:''};
         });
         data.messen[messeId].hallen[id] = {name, interviewer:interviewer||'', active:false, createdAt:new Date().toISOString(), aussteller};
         writeAll(data); notifyHallen(messeId);
@@ -553,6 +559,16 @@
         if(!h) return;
         h.interviewer = text;
         writeAll(data); notifyHallen(messeId);
+      },
+      async getMesse(messeId){
+        const data = readAll();
+        const m = data.messen[messeId];
+        return m ? { id: messeId, name:m.name, active:m.active, createdAt:m.createdAt } : null;
+      },
+      async getHalle(messeId, hallId){
+        const data = readAll();
+        const h = data.messen[messeId] && data.messen[messeId].hallen[hallId];
+        return h ? { id: hallId, name:h.name, interviewer:h.interviewer, active:h.active, createdAt:h.createdAt } : null;
       },
       subscribeAussteller(messeId, hallId, cb){
         const key = messeId+'|'+hallId;
@@ -677,7 +693,7 @@
           chunk.forEach(r=>{
             const docRef = col.doc();
             batch.set(docRef, {
-              stand:r.stand, firma:r.firma, nr:r.nr||'', order:r.order,
+              stand:r.stand, firma:r.firma, nr:r.nr||'', sprache:r.sprache||'', order:r.order,
               out:false, outAt:null, in:false, inAt:null, kommentar:''
             });
           });
@@ -699,6 +715,17 @@
       },
       async updateHalleInterviewer(messeId, hallId, text){
         await hallenCol(messeId).doc(hallId).update({interviewer:text});
+      },
+      // One-shot lookups (not live subscriptions) — used to resolve a
+      // direct ?messe=...&halle=... link on load, before deciding whether
+      // to jump straight into that Halle.
+      async getMesse(messeId){
+        const doc = await messenCol.doc(messeId).get();
+        return doc.exists ? { id: doc.id, ...doc.data() } : null;
+      },
+      async getHalle(messeId, hallId){
+        const doc = await hallenCol(messeId).doc(hallId).get();
+        return doc.exists ? { id: doc.id, ...doc.data() } : null;
       },
       subscribeAussteller(messeId, hallId, cb){
         return ausstellerCol(messeId, hallId).orderBy('order','asc').onSnapshot(snap=>{
@@ -1258,7 +1285,8 @@
         </div>
         <div style="display:flex; align-items:center; gap:8px; margin-top:10px;">
           <button class="chip ${h.active?'active':''}" data-action="toggle-active">${h.active?ICON.check+' Läuft':'Pausiert'}</button>
-          <button class="btn btn-sm" data-action="open-halle" style="margin-left:auto;">Öffnen</button>
+          <button class="btn btn-sm" data-action="copy-link" style="margin-left:auto;" title="Direkten Link zu dieser Halle kopieren">${ICON.link}</button>
+          <button class="btn btn-sm" data-action="open-halle">Öffnen</button>
           <button class="btn btn-sm btn-danger" data-action="delete-halle">${ICON.trash}</button>
         </div>
         ${confirmDeleteHallId===h.id?`
@@ -1289,6 +1317,27 @@
         const id = btn.closest('.hall-card').dataset.id;
         const h = adminHallen.find(x=>x.id===id);
         if(h) openHalle(h, currentMesseId, 'admin');
+      };
+    });
+    listEl.querySelectorAll('[data-action="copy-link"]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        const id = btn.closest('.hall-card').dataset.id;
+        const url = `${location.origin}${location.pathname}?messe=${encodeURIComponent(currentMesseId)}&halle=${encodeURIComponent(id)}`;
+        const prevHtml = btn.innerHTML;
+        try{
+          if(navigator.clipboard && navigator.clipboard.writeText){
+            await navigator.clipboard.writeText(url);
+          } else {
+            // Clipboard API needs a secure context / permission that may
+            // not be available (older browser, http instead of https) —
+            // fall back to a manual-copy prompt instead of failing silently.
+            window.prompt('Link kopieren (Strg/Cmd+C):', url);
+          }
+          btn.innerHTML = ICON.check;
+          setTimeout(()=>{ btn.innerHTML = prevHtml; }, 1500);
+        }catch(e){
+          window.prompt('Link kopieren (Strg/Cmd+C):', url);
+        }
       };
     });
     listEl.querySelectorAll('[data-action="delete-halle"]').forEach(btn=>{
@@ -1323,7 +1372,7 @@
   /* ---------------- IMPORT ---------------- */
   function startImport(messeId, messeName){
     stopAll();
-    importState = { messeId, messeName, rawRows:null, headerRow:null, standIdx:-1, firmaIdx:-1, halleIdx:-1, nrIdx:-1, manualName:'', interviewer:'', file:null };
+    importState = { messeId, messeName, rawRows:null, headerRow:null, standIdx:-1, firmaIdx:-1, halleIdx:-1, nrIdx:-1, spracheIdx:-1, manualName:'', interviewer:'', file:null };
     view='import';
     setTopbar(`
       <button class="back-btn" id="back-btn">${ICON.back}</button>
@@ -1375,22 +1424,24 @@
     importState.multiSheetNote = wb.SheetNames.length>1 ? sheetName : null;
 
     const norm = s=>s.toLowerCase().trim();
-    let standIdx=-1, firmaIdx=-1, halleIdx=-1, nrIdx=-1;
+    let standIdx=-1, firmaIdx=-1, halleIdx=-1, nrIdx=-1, spracheIdx=-1;
     header.forEach((h,i)=>{
       const n = norm(h);
       const compact = n.replace(/\./g,'').replace(/\s+/g,'');
       if(standIdx===-1 && /stand/.test(n)) standIdx=i;
       if(halleIdx===-1 && /halle/.test(n)) halleIdx=i;
       if(nrIdx===-1 && /^(no|nr|lfdnr|laufendenr|nummer|#)$/.test(compact)) nrIdx=i;
+      if(spracheIdx===-1 && /(sprach|language|lang\.?code|sprachcode)/.test(n)) spracheIdx=i;
     });
     header.forEach((h,i)=>{
       const n = norm(h);
-      if(firmaIdx===-1 && i!==standIdx && i!==halleIdx && i!==nrIdx && /(firma|aussteller|unternehmen|name|company)/.test(n)) firmaIdx=i;
+      if(firmaIdx===-1 && i!==standIdx && i!==halleIdx && i!==nrIdx && i!==spracheIdx && /(firma|aussteller|unternehmen|name|company)/.test(n)) firmaIdx=i;
     });
     importState.standIdx = standIdx;
     importState.firmaIdx = firmaIdx;
     importState.halleIdx = halleIdx;
     importState.nrIdx = nrIdx;
+    importState.spracheIdx = spracheIdx;
 
     if(halleIdx>-1){
       const vals = Array.from(new Set(dataRows.map(r=> String(r[halleIdx]||'').trim()).filter(Boolean)));
@@ -1408,7 +1459,7 @@
   }
 
   function renderImportStep2(){
-    const { headerRow, standIdx, firmaIdx, halleIdx, nrIdx, dataRows, halleValues, multiSheetNote, messeName } = importState;
+    const { headerRow, standIdx, firmaIdx, halleIdx, nrIdx, spracheIdx, dataRows, halleValues, multiSheetNote, messeName } = importState;
     const options = (selected)=> headerRow.map((h,i)=>
       `<option value="${i}" ${i===selected?'selected':''}>${esc(h)}</option>`).join('');
     const multiHalle = halleValues.length>1;
@@ -1428,6 +1479,10 @@
         <div class="field">
           <label class="field-label">Spalte: Lfd. Nr. (optional)</label>
           <select id="sel-nr"><option value="-1">— keine —</option>${options(nrIdx)}</select>
+        </div>
+        <div class="field">
+          <label class="field-label">Spalte: Sprachcode (optional)</label>
+          <select id="sel-sprache"><option value="-1">— keine —</option>${options(spracheIdx)}</select>
         </div>
         <div class="field">
           <label class="field-label">Spalte: Halle (optional)</label>
@@ -1455,6 +1510,7 @@
     document.getElementById('sel-stand').onchange = e=>{ importState.standIdx=+e.target.value; refreshPreview(); };
     document.getElementById('sel-firma').onchange = e=>{ importState.firmaIdx=+e.target.value; refreshPreview(); };
     document.getElementById('sel-nr').onchange = e=>{ importState.nrIdx=+e.target.value; refreshPreview(); };
+    document.getElementById('sel-sprache').onchange = e=>{ importState.spracheIdx=+e.target.value; refreshPreview(); };
     document.getElementById('sel-halle').onchange = e=>{
       importState.halleIdx=+e.target.value;
       const vals = importState.halleIdx>-1
@@ -1471,7 +1527,7 @@
   }
 
   function refreshPreview(){
-    const { standIdx, firmaIdx, nrIdx, dataRows } = importState;
+    const { standIdx, firmaIdx, nrIdx, spracheIdx, dataRows } = importState;
     const wrap = document.getElementById('preview-wrap');
     const confirmBtn = document.getElementById('confirm-import');
     const manualInput = document.getElementById('manual-name');
@@ -1484,13 +1540,13 @@
       return;
     }
     const rows = dataRows.slice(0,5);
-    wrap.innerHTML = `<table class="preview"><thead><tr>${nrIdx>-1?'<th>Nr.</th>':''}<th>Stand</th><th>Firma</th></tr></thead><tbody>
-      ${rows.map(r=>`<tr>${nrIdx>-1?`<td class="stand-cell">${esc(r[nrIdx]||'—')}</td>`:''}<td class="stand-cell">${esc(r[standIdx]||'—')}</td><td>${esc(r[firmaIdx]||'—')}</td></tr>`).join('')}
+    wrap.innerHTML = `<table class="preview"><thead><tr>${nrIdx>-1?'<th>Nr.</th>':''}<th>Stand</th><th>Firma</th>${spracheIdx>-1?'<th>Sprache</th>':''}</tr></thead><tbody>
+      ${rows.map(r=>`<tr>${nrIdx>-1?`<td class="stand-cell">${esc(r[nrIdx]||'—')}</td>`:''}<td class="stand-cell">${esc(r[standIdx]||'—')}</td><td>${esc(r[firmaIdx]||'—')}</td>${spracheIdx>-1?`<td class="stand-cell">${esc(r[spracheIdx]||'—')}</td>`:''}</tr>`).join('')}
     </tbody></table>`;
   }
 
   async function confirmImport(){
-    const { messeId, messeName, standIdx, firmaIdx, halleIdx, nrIdx, dataRows, halleValues, interviewer } = importState;
+    const { messeId, messeName, standIdx, firmaIdx, halleIdx, nrIdx, spracheIdx, dataRows, halleValues, interviewer } = importState;
     if(standIdx===-1 || firmaIdx===-1) return;
     const btn = document.getElementById('confirm-import');
     btn.disabled = true; btn.textContent = 'Wird angelegt…';
@@ -1498,7 +1554,8 @@
     const clean = r => ({
       stand: String(r[standIdx]||'').trim(),
       firma: String(r[firmaIdx]||'').trim(),
-      nr: nrIdx>-1 ? String(r[nrIdx]||'').trim() : ''
+      nr: nrIdx>-1 ? String(r[nrIdx]||'').trim() : '',
+      sprache: spracheIdx>-1 ? String(r[spracheIdx]||'').trim() : ''
     });
 
     try{
@@ -1734,6 +1791,7 @@
           ${r.nr?`<span class="row-nr">${esc(r.nr)}</span>`:''}
           <span class="row-stand">${esc(r.stand||'—')}</span>
           <span class="row-firma">${esc(r.firma||'—')}</span>
+          ${r.sprache?`<span class="row-sprache">${esc(r.sprache)}</span>`:''}
         </div>
         <div class="row-actions">
           <button class="toggle-btn ${r.out?'on-out':''}" data-field="out">${r.out?ICON.check:ICON.out} Ausgeteilt</button>
@@ -1789,10 +1847,12 @@
 
   async function exportHalle(){
     const hasNr = hallRows.some(r=>r.nr);
+    const hasSprache = hallRows.some(r=>r.sprache);
     const rows = hallRows.map(r=>({
       ...(hasNr ? {'Nr.': r.nr||''} : {}),
       'Stand': r.stand||'',
       'Firma': r.firma||'',
+      ...(hasSprache ? {'Sprache': r.sprache||''} : {}),
       'Ausgeteilt': r.out?'Ja':'Nein',
       'Ausgeteilt um': fmtTime(r.outAt)||'',
       'Eingesammelt': r.in?'Ja':'Nein',
@@ -1800,9 +1860,13 @@
       'Kommentar': r.kommentar||''
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = hasNr
-      ? [{wch:6},{wch:10},{wch:32},{wch:11},{wch:13},{wch:13},{wch:15},{wch:30}]
-      : [{wch:10},{wch:32},{wch:11},{wch:13},{wch:13},{wch:15},{wch:30}];
+    const baseCols = [{wch:10},{wch:32}];
+    ws['!cols'] = [
+      ...(hasNr ? [{wch:6}] : []),
+      ...baseCols,
+      ...(hasSprache ? [{wch:9}] : []),
+      {wch:11},{wch:13},{wch:13},{wch:15},{wch:30}
+    ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Aussteller');
     const buf = XLSX.write(wb, {type:'array', bookType:'xlsx'});
@@ -1842,11 +1906,50 @@
   }
 
   /* ---------------- init ---------------- */
+  // A direct ?messe=<id>&halle=<id> link opens that one Halle straight
+  // away, bypassing the home Messe-picker/sticky-selection logic entirely.
+  // This is what lets a single Halle be tested (or, later, a real
+  // interviewer phone be set up) on its own, independent of which Messe
+  // the admin currently has marked active.
+  async function tryOpenDirectHalleLink(){
+    let messeId, hallId;
+    try{
+      const params = new URLSearchParams(window.location.search);
+      messeId = params.get('messe');
+      hallId = params.get('halle');
+    }catch(e){ return false; }
+    if(!messeId || !hallId) return false;
+    try{
+      const [messe, halle] = await Promise.all([ store.getMesse(messeId), store.getHalle(messeId, hallId) ]);
+      if(!messe || !halle){
+        setTopbar(`<div><h1 class="page-title">Ausstellerbefragung</h1></div>`);
+        app.innerHTML = `<div class="empty">${ICON.empty}<div>Dieser Link ist ungültig oder die Halle wurde gelöscht.<br>Bitte die Verwaltung um einen neuen Link bitten.</div></div>`;
+        return true;
+      }
+      // Deliberately checks only the Halle's own active flag, not the
+      // Messe's — the whole point of a direct link is to work regardless
+      // of which Messe the admin currently has marked active centrally.
+      // Pausing this one Halle (already exposed in the admin UI) is enough
+      // to disable its direct link.
+      if(!halle.active){
+        setTopbar(`<div><p class="kicker">${esc(messe.name)}</p><h1 class="page-title">${esc(halle.name)}</h1></div>`);
+        app.innerHTML = `<div class="empty">${ICON.empty}<div>Diese Halle ist aktuell pausiert.<br>Bitte bei der Verwaltung nachfragen.</div></div>`;
+        return true;
+      }
+      currentMesseId = messeId; currentMesseName = messe.name;
+      openHalle(halle, messeId, 'home');
+      return true;
+    }catch(e){
+      return false;
+    }
+  }
+
   (async function init(){
     try{ isAdmin = sessionStorage.getItem('ausstellerbefragung_admin') === '1'; }catch(e){ isAdmin = false; }
     try{ homeSelectedMesseId = localStorage.getItem('ausstellerbefragung_home_messe') || null; }catch(e){ homeSelectedMesseId = null; }
     usingFirebase = await tryInitFirebase();
-    renderHome();
+    const handledDirectLink = await tryOpenDirectHalleLink();
+    if(!handledDirectLink) renderHome();
     if(!usingFirebase){
       showBanner(`Keine Verbindung zur zentralen Datenbank – Änderungen werden nur lokal auf diesem Gerät gespeichert und nicht mit anderen Geräten geteilt.${lastFirebaseInitError?`<br><span style="font-size:12px; opacity:.75;">Technische Meldung: ${esc(lastFirebaseInitError)}</span>`:''}`, true);
     }
